@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home Shopping</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f4f4f6;color:#222}
+header{background:#e62e04;color:#fff;padding:18px;text-align:center}
+h1{margin:0;font-size:22px}
+p.s{margin:6px 0 0;font-size:13px;opacity:.9}
+main{padding:12px;display:grid;gap:12px;max-width:700px;margin:auto}
+.c{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px #0002}
+.i{font-size:56px;text-align:center}
+.n{font-weight:bold;margin:8px 0}
+.p{color:#e62e04;font-size:20px;font-weight:bold}
+.t{font-size:13px;color:#666;margin:4px 0 10px}
+a.b{display:block;text-align:center;background:#e62e04;color:#fff;text-decoration:none;padding:12px;border-radius:8px;font-weight:bold}
+footer{text-align:center;font-size:12px;color:#777;padding:16px}
+</style>
+</head>
+<body>
+<header><h1>Home Shopping</h1><p class="s">منتجات مختارة من AliExpress</p></header>
+<main id="list"><div class="c">جاري التحميل...</div></main>
+<footer>الروابط روابط إحالة. قد نحصل على عمولة عند الشراء من غير أي تكلفة إضافية عليك. الأسعار تتغير في AliExpress.</footer>
+<script>
+var d=[
+  {"name":"موديولات حساسات لمس TTP223 للمشاريع الإلكترونية","price":"164.94 جنيه","icon":"🔧","note":"تقييم 4.9، أكتر من 5000 مبيعات","link":"https://s.click.aliexpress.com/e/_c3Ojkieh"},
+  {"name":"ساعة رجالي دهبي هيكلية بتصميم منقوش","price":"1,160.22 جنيه","icon":"⌚","note":"تقييم 4.5، خصم 64%","link":"https://s.click.aliexpress.com/e/_c3SrjKRx"},
+  {"name":"شريط لاصق لمنع انزلاق الماوس Hotline Games (قطعتين)","price":"388.03 جنيه","icon":"🖱️","note":"تقييم 5.0، خصم 47%","link":"https://s.click.aliexpress.com/e/_c3Eclt65"}
+];
+(function(){
+  var l=document.getElementById('list');
+  l.innerHTML='';
+  d.forEach(function(p){
+    var c=document.createElement('div');
+    c.className='c';
+    var a=document.createElement('a');
+    a.className='b';a.href=p.link;a.target='_blank';a.rel='nofollow sponsored noopener';a.textContent='شوف العرض على AliExpress';
+    var i=document.createElement('div');i.className='i';i.textContent=p.icon;
+    var n=document.createElement('div');n.className='n';n.textContent=p.name;
+    var pr=document.createElement('div');pr.className='p';pr.textContent=p.price;
+    var t=document.createElement('div');t.className='t';t.textContent=p.note;
+    c.append(i,n,pr,t,a);
+    l.appendChild(c);
+  });
+})();
+</script>
+</body>
+</html>
