@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.0.0
+// @version      1.0.1
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
+// @match        https://*.pocketoption.com/*
+// @match        https://m.pocketoption.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -155,7 +157,7 @@
     if (dailyProfit <= -CFG.dailyLossLimit) { logLine('وصلنا لحد الخسارة اليومية — إيقاف.'); stopBot(); return; }
     const payout = readPayout();
     if (payout < CFG.minPayout) { logLine('العائد ' + Math.round(payout * 100) + '% أقل من 85% — تخطّي.'); return; }
-    const btn = findButton(dir === 'CALL' ? 'Call' : 'Put');
+    const btn = findButton(dir === 'CALL' ? 'Call|شراء|صعود|أعلى' : 'Put|بيع|هبوط|أسفل');
     if (!btn) { logLine('❌ مش لاقي زر ' + dir + ' في الواجهة — الصفقة اتلغت (الموقع ممكن يكون اتغيّر).'); return; }
     lastTradeAt = Date.now();
     tradesToday++;
