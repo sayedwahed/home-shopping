@@ -58,6 +58,11 @@ jobs:
     timeout-minutes: 4  # الجولة الواحدة يجب أن تنتهي خلال 4 دقائق
     permissions:
       contents: read
+    # الكود في مجلد فرعي binance_hybrid_bot وليس في جذر المستودع —
+    # كل أوامر التشغيل تنفذ من داخل هذا المجلد
+    defaults:
+      run:
+        working-directory: binance_hybrid_bot
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
