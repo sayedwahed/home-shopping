@@ -9,42 +9,162 @@ body{margin:0;font-family:Arial,sans-serif;background:#f4f4f6;color:#222}
 header{background:#e62e04;color:#fff;padding:18px;text-align:center}
 h1{margin:0;font-size:22px}
 p.s{margin:6px 0 0;font-size:13px;opacity:.9}
-main{padding:12px;display:grid;gap:12px;max-width:700px;margin:auto}
-.c{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px #0002}
+.toolbar{max-width:900px;margin:14px auto 0;padding:0 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar input[type=search],.toolbar select,.toolbar input[type=number]{padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;background:#fff}
+.toolbar input[type=search]{flex:1;min-width:180px}
+.cats{max-width:900px;margin:10px auto 0;padding:0 12px;display:flex;gap:8px;flex-wrap:wrap}
+.cats button{padding:8px 14px;border:1px solid #e62e04;background:#fff;color:#e62e04;border-radius:20px;cursor:pointer;font-size:14px}
+.cats button.on{background:#e62e04;color:#fff}
+main{padding:12px;display:grid;gap:12px;max-width:900px;margin:auto;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.c{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px #0002;display:flex;flex-direction:column}
 .i{font-size:56px;text-align:center}
-.n{font-weight:bold;margin:8px 0}
+.n{font-weight:bold;margin:8px 0;min-height:40px}
 .p{color:#e62e04;font-size:20px;font-weight:bold}
+.o{color:#888;text-decoration:line-through;font-size:14px;margin-right:6px}
+.badge{display:inline-block;background:#ffe1d6;color:#b3261e;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:bold}
 .t{font-size:13px;color:#666;margin:4px 0 10px}
-a.b{display:block;text-align:center;background:#e62e04;color:#fff;text-decoration:none;padding:12px;border-radius:8px;font-weight:bold}
+.cat{font-size:12px;color:#888}
+.row{display:flex;gap:8px;margin-top:auto}
+button.d{flex:1;padding:11px;border:1px solid #e62e04;background:#fff;color:#e62e04;border-radius:8px;font-weight:bold;cursor:pointer}
+a.b{flex:1;display:block;text-align:center;background:#e62e04;color:#fff;text-decoration:none;padding:12px;border-radius:8px;font-weight:bold}
+.empty{grid-column:1/-1;text-align:center;color:#666;padding:30px}
 footer{text-align:center;font-size:12px;color:#777;padding:16px}
+dialog{border:0;border-radius:12px;max-width:420px;width:92%;padding:20px}
+dialog .i{font-size:64px}
+dialog h2{font-size:18px;margin:8px 0}
+dialog p{font-size:14px;color:#555;line-height:1.7}
+dialog .close{width:100%;padding:11px;border:0;background:#eee;border-radius:8px;cursor:pointer;font-weight:bold;margin-top:10px}
 </style>
 </head>
 <body>
 <header><h1>Home Shopping</h1><p class="s">منتجات مختارة من AliExpress</p></header>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="ابحث عن منتج..." aria-label="بحث">
+  <select id="sort" aria-label="ترتيب">
+    <option value="featured">ترتيب: المميز</option>
+    <option value="rating">الأعلى تقييماً</option>
+    <option value="discount">أكبر خصم</option>
+    <option value="price-asc">السعر: من الأقل للأعلى</option>
+    <option value="price-desc">السعر: من الأعلى للأقل</option>
+  </select>
+  <label>أقصى سعر <input type="number" id="maxPrice" min="0" placeholder="مثال: 500" style="width:110px"> جنيه</label>
+</div>
+<div class="cats" id="cats">
+  <button data-cat="all" class="on">الكل</button>
+  <button data-cat="electronics">إلكترونيات</button>
+  <button data-cat="fashion">موضة</button>
+  <button data-cat="gaming">ألعاب</button>
+</div>
+
 <main id="list"><div class="c">جاري التحميل...</div></main>
+
+<dialog id="dlg">
+  <div class="i" id="dlgIcon"></div>
+  <h2 id="dlgName"></h2>
+  <p id="dlgBody"></p>
+  <a class="b" id="dlgBuy" target="_blank" rel="nofollow sponsored noopener" style="display:block">شوف العرض على AliExpress</a>
+  <button class="close" onclick="document.getElementById('dlg').close()">إغلاق</button>
+</dialog>
+
 <footer>الروابط روابط إحالة. قد نحصل على عمولة عند الشراء من غير أي تكلفة إضافية عليك. الأسعار تتغير في AliExpress.</footer>
+
 <script>
-var d=[
-  {"name":"موديولات حساسات لمس TTP223 للمشاريع الإلكترونية","price":"164.94 جنيه","icon":"🔧","note":"تقييم 4.9، أكتر من 5000 مبيعات","link":"https://s.click.aliexpress.com/e/_c3Ojkieh"},
-  {"name":"ساعة رجالي دهبي هيكلية بتصميم منقوش","price":"1,160.22 جنيه","icon":"⌚","note":"تقييم 4.5، خصم 64%","link":"https://s.click.aliexpress.com/e/_c3SrjKRx"},
-  {"name":"شريط لاصق لمنع انزلاق الماوس Hotline Games (قطعتين)","price":"388.03 جنيه","icon":"🖱️","note":"تقييم 5.0، خصم 47%","link":"https://s.click.aliexpress.com/e/_c3Eclt65"}
-];
-(function(){
-  var l=document.getElementById('list');
-  l.innerHTML='';
-  d.forEach(function(p){
-    var c=document.createElement('div');
-    c.className='c';
-    var a=document.createElement('a');
-    a.className='b';a.href=p.link;a.target='_blank';a.rel='nofollow sponsored noopener';a.textContent='شوف العرض على AliExpress';
-    var i=document.createElement('div');i.className='i';i.textContent=p.icon;
-    var n=document.createElement('div');n.className='n';n.textContent=p.name;
-    var pr=document.createElement('div');pr.className='p';pr.textContent=p.price;
-    var t=document.createElement('div');t.className='t';t.textContent=p.note;
-    c.append(i,n,pr,t,a);
-    l.appendChild(c);
+var all = [];
+var cat = 'all';
+
+function fmt(n){ return Number(n).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' جنيه'; }
+
+function render(){
+  var q = document.getElementById('q').value.trim();
+  var sort = document.getElementById('sort').value;
+  var max = parseFloat(document.getElementById('maxPrice').value);
+  var list = all.filter(function(p){
+    if (cat !== 'all' && p.category !== cat) return false;
+    if (q && p.name.indexOf(q) === -1) return false;
+    if (!isNaN(max) && p.price_egp > max) return false;
+    return true;
   });
-})();
+  if (sort === 'rating') list.sort(function(a,b){ return (b.rating||0)-(a.rating||0); });
+  if (sort === 'discount') list.sort(function(a,b){ return (b.discount_percent||0)-(a.discount_percent||0); });
+  if (sort === 'price-asc') list.sort(function(a,b){ return a.price_egp-b.price_egp; });
+  if (sort === 'price-desc') list.sort(function(a,b){ return b.price_egp-a.price_egp; });
+
+  var el = document.getElementById('list');
+  el.innerHTML = '';
+  if (!list.length){
+    var e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'لا توجد منتجات مطابقة لبحثك.';
+    el.appendChild(e);
+    return;
+  }
+  list.forEach(function(p){
+    var c = document.createElement('div');
+    c.className = 'c';
+    var i = document.createElement('div'); i.className='i'; i.textContent = p.icon || '🛍️';
+    var n = document.createElement('div'); n.className='n'; n.textContent = p.name;
+    var pr = document.createElement('div'); pr.className='p';
+    pr.textContent = fmt(p.price_egp);
+    if (p.old_price_egp){
+      var o = document.createElement('span'); o.className='o'; o.textContent = fmt(p.old_price_egp);
+      pr.appendChild(o);
+    }
+    if (p.discount_percent){
+      var b = document.createElement('span'); b.className='badge'; b.textContent = 'خصم ' + p.discount_percent + '%';
+      pr.appendChild(document.createTextNode(' '));
+      pr.appendChild(b);
+    }
+    var t = document.createElement('div'); t.className='t';
+    var parts = [];
+    if (p.rating) parts.push('تقييم ' + p.rating);
+    if (p.sales_note) parts.push(p.sales_note);
+    if (p.category_ar) parts.push(p.category_ar);
+    t.textContent = parts.join('، ');
+    var row = document.createElement('div'); row.className='row';
+    var d = document.createElement('button'); d.className='d'; d.textContent='التفاصيل';
+    d.onclick = function(){ showDetails(p); };
+    var a = document.createElement('a'); a.className='b'; a.href = p.affiliate_link; a.target='_blank'; a.rel='nofollow sponsored noopener'; a.textContent='شوف العرض على AliExpress';
+    row.appendChild(d); row.appendChild(a);
+    c.append(i,n,pr,t,row);
+    el.appendChild(c);
+  });
+}
+
+function showDetails(p){
+  document.getElementById('dlgIcon').textContent = p.icon || '🛍️';
+  document.getElementById('dlgName').textContent = p.name;
+  var lines = ['السعر: ' + fmt(p.price_egp)];
+  if (p.old_price_egp) lines.push('السعر قبل الخصم: ' + fmt(p.old_price_egp));
+  if (p.discount_percent) lines.push('الخصم: ' + p.discount_percent + '%');
+  if (p.rating) lines.push('التقييم: ' + p.rating + ' من 5');
+  if (p.sales_note) lines.push(p.sales_note);
+  if (p.category_ar) lines.push('التصنيف: ' + p.category_ar);
+  document.getElementById('dlgBody').textContent = lines.join(' — ');
+  document.getElementById('dlgBuy').href = p.affiliate_link;
+  document.getElementById('dlg').showModal();
+}
+
+document.getElementById('q').addEventListener('input', render);
+document.getElementById('sort').addEventListener('change', render);
+document.getElementById('maxPrice').addEventListener('input', render);
+document.getElementById('cats').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button');
+  if (!btn) return;
+  cat = btn.getAttribute('data-cat');
+  document.querySelectorAll('#cats button').forEach(function(b){ b.classList.toggle('on', b === btn); });
+  render();
+});
+
+fetch('products.json', {cache: 'no-store'})
+  .then(function(r){ if(!r.ok) throw new Error('products.json not found'); return r.json(); })
+  .then(function(d){
+    all = (d.products || []).filter(function(p){ return p.affiliate_link && p.affiliate_link.indexOf('s.click.aliexpress.com') === 8; });
+    render();
+  })
+  .catch(function(){
+    document.getElementById('list').innerHTML = '<div class="empty">تعذر تحميل المنتجات حالياً، حاول مرة أخرى.</div>';
+  });
 </script>
 </body>
 </html>
