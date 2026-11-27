@@ -1,0 +1,10 @@
+# Playwright: أتمتة المتصفح (البوت الرئيسي bot_browser.py)
+# بيفتح Chrome حقيقي، وانت بتسجّل دخولك بنفسك — مفيش أي بيانات دخول في الكود
+playwright>=1.40
+
+# yfinance: مصدر الأسعار العام للقرار (Yahoo Finance — من غير حساب ولا مفتاح)
+# بيستخدمه bot_browser.py و signals.py عشان يحسبوا المؤشرات والاستراتيجيات
+yfinance>=0.2.0
+
+# بعد التثبيت، سطّب متصفح Playwright مرة واحدة:
+#   playwright install chromium
