@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.1.3
+// @version      1.2.0
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
 // @match        https://m.pocketoption.com/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 /*
   ============================================================
@@ -81,6 +81,8 @@
 
   ============================================================
   v1.1.3 — السعر على الموبايل مرسوم على Canvas فقط، مصدر خارجي
+  (ملاحظة: هذا المصدر الخارجي أُلغي بالكامل في v1.1.4 بناءً على
+  طلب المستخدم — السعر الآن من الصفحة فقط)
   ============================================================
   الدليل من لقطة المستخدم (v1.1.2، الساعة 10:31):
   "تشخيص السعر: 1.92 (2)، 0.92 (2) | أرقام عشرية: 1 |
@@ -90,26 +92,85 @@
   إطلاقاً، ولا SVG ولا Shadow DOM، والـ iframe الوحيد
   كروس-أوريجن ولا يمكن قراءته. إذن سعر الشارت مرسوم
   على <canvas> فقط، ولا قارئ DOM يستطيع رؤيته.
-  الإصلاح في v1.1.3 (بدون كوكيز، بدون SSID، بدون API خاص):
-  - يبقى سعر الصفحة (DOM) هو المصدر الأول — يعمل على
-    نسخة سطح المكتب إن وُجد السعر في DOM.
-  - إذا غاب سعر DOM لمدة 30 ثانية، ينتقل السكربت تلقائياً
-    إلى مصدر عام بلا مصادقة: Yahoo Finance (query1 ثم
-    query2)، لسعر الزوج الحالي، مثلاً AUD/CAD OTC ->
-    AUDCAD=X، EUR/USD -> EURUSD=X، BTC/USD -> BTC-USD،
-    XAU/USD -> GC=F. يُبنى من السعر الخارجي شموع 15 ثانية
-    بنفس طريقة سعر الصفحة تماماً.
-  - اللوحة توضح المصدر النشط بوضوح: "السعر من: الصفحة"
-    (أخضر) أو "السعر من: Yahoo (خارجي)" (برتقالي)، مع
-    تحذير يُسجَّل مرة واحدة عند التبديل.
-  ⚠️ تحذير مهم: سعر Yahoo هو سعر السوق الحقيقي العام،
-  أما Pocket Option OTC فسعره صناعي خاص بالمنصة وقد
-  يختلف عنه — فالإشارات المبنية على المصدر الخارجي
-  تقريبية فقط، وليست سعر المنصة نفسه.
-  - إذا فشل DOM و Yahoo معاً، يستمر التحذير بعد 60 ثانية
-    ويستمر السكربت في المحاولة دون أن يتعطل.
+  في v1.1.3 جُرّب مصدر سعر خارجي عام كحل مؤقت، لكنه فشل
+  على هاتف المستخدم (حظر CORS)، ثم أُلغي نهائياً في v1.1.4
+  بناءً على طلب المستخدم — لا كود له ولا أثر وظيفي له هنا.
   - كل شيء آخر بلا تغيير (11 استراتيجية، الأوضاع،
     الفلاتر، حدود المخاطر، ديمو فقط، بلا SSID/API/كوكيز).
+
+  ============================================================
+  v1.1.4 — السعر من الصفحة فقط: DOM + خطاف WebSocket
+  (المصادر العامة الخارجية أُلغيت بناءً على طلب المستخدم)
+  ============================================================
+  الدليل من لقطة المستخدم (v1.1.3، الساعة 10:41):
+  اللوحة v1.1.3 مثبّتة صح لكن السعر لسه "-" والتسخين 0/30،
+  والتشخيص نفسه (1.92 / 0.92 فقط)، والسجل يقول "⚠️ مش لاقي
+  السعر في الصفحة ولا من Yahoo". إذن جلب Yahoo فشل على
+  هاتف المستخدم — غالباً حظر CORS في Firefox موبايل.
+  قرار المستخدم: لا مصادر خارجية/عامة إطلاقاً للسعر.
+  لذلك في v1.1.4 أُزيلت كل المصادر العامة (Yahoo وكل
+  بدائله) من الكود نهائياً — لا جلب خارجي، لا fetch
+  لأسعار من أي موقع، والسعر يأتي فقط مما هو موجود أصلاً
+  في صفحة المتصفح نفسها:
+  1) قراءة DOM (طرق v1.1.2 كلها) — المصدر الأول.
+  2) خطاف WebSocket (المصدر الجديد — سعر المنصة نفسه،
+     بلا اختلاف OTC): السكربت يحقن <script> في سياق
+     الصفحة يغلّف WebSocket (المنشئ + addEventListener +
+     onmessage) ويفحص كل رسالة واردة من سوكيت المنصة
+     نفسها، ويستخرج سعر الزوج الحالي (مثلاً AUDCAD) من
+     حقول price/close/last أو من مفتاح يحمل اسم الزوج،
+     وينشره في عنصر DOM مخفي #muse-po-price (data-price)
+     يقرأه السكربت. لا يُرسل شيئاً للخارج، ولا يقرأ أي
+     كوكيز، ولا يستخرج أي بيانات دخول — البيانات أصلاً
+     تتدفق في متصفح المستخدم نفسه، والسكربت يستمع لها
+     فقط. هذا قراءة من الصفحة، وليس مصدراً خارجياً.
+     ملاحظة صادقة: الخطاف يمسك السوكيتات التي تُنشأ بعد
+     الحقن وأي إعادة اتصال؛ سوكيت كان مفتوحاً قبل الحقن
+     قد لا يُمسك حتى يعيد الاتصال. لهذا @run-at أصبح
+     document-start حتى يكون الخطاف موجوداً قبل أن تنشئ
+     الصفحة سوكيتها.
+  3) تشخيص ما يراه الخطاف: سطر التشخيص يعرض عدد رسائل
+     السوكيت التي فحصها الخطاف، وآخر مرة رأى فيها سعراً،
+     ومصدر السعر النشط (الصفحة / WebSocket). وإذا مرت
+     60 ثانية بلا أي رسالة سعر من السوكيت، يسجّل السجل
+     بالعربي أن الخطاف لم يرَ رسائل سعر، ويستمر في المحاولة.
+  ترتيب مصادر السعر الآن: الصفحة (DOM) -> WebSocket المنصة.
+  لا شيء غيرهما. وبما أن السعر من المنصة نفسها، فلا يوجد
+  تحذير عدم تطابق OTC في هذه النسخة.
+  - كل شيء آخر بلا تغيير (11 استراتيجية، الأوضاع،
+    الفلاتر، حدود المخاطر، ديمو فقط، بلا SSID/API/كوكيز).
+
+
+  ============================================================
+  v1.2.0 — لوحة تحكم جديدة: حدود يكتبها المستخدم بنفسه
+  واختيار استراتيجيات متعددة (تصحيحات المستخدم)
+  ============================================================
+  تصحيح مهم من المستخدم: هو لم يحدد أبداً "10 صفقات في اليوم"
+  كحد أقصى — كان ذلك افتراضاً منا، فأُلغي. الآن كل الحدود
+  حقول قابلة للتعديل في اللوحة، يكتبها المستخدم بنفسه:
+  - مبلغ الصفقة (stake): افتراضي 1 دولار.
+  - الربح اليومي المستهدف: افتراضي 10 دولار، 0 = بلا هدف.
+    عند وصول صافي اليوم للهدف يتوقف البوت ويسجّل ذلك.
+  - الخسارة اليومية القصوى: افتراضي 10 دولار.
+  - أقصى عدد صفقات في اليوم: افتراضي 0 = بلا حد (بدون حد).
+    البوت يتوقف فقط إذا كانت القيمة > 0 ووصل لها.
+  - إيقاف بعد خسائر متتالية: حقل قابل للتعديل، افتراضي 3.
+  - اللوحة تعرض لحظياً: صفقات اليوم | صافي اليوم |
+    الهدف | المتبقي للهدف.
+  اختيار استراتيجيات متعددة: لم يعد المستخدم مضطراً لاختيار
+  استراتيجية واحدة. اللوحة الآن فيها خانات اختيار لكل
+  الاستراتيجيات الـ 11، مع زرّي "اختر الكل" / "إلغاء الكل".
+  الافتراضي: confluence + ema_cross_fast.
+  منطق الدخول: في كل فحص تُقيَّم كل استراتيجية مختارة،
+  وتُجمع إشارات CALL وإشارات PUT. دخول CALL إذا كانت
+  إشارات CALL >= 1 ولا إشارات PUT، والعكس لـ PUT. إذا
+  كان هناك إشارات من الجهتين، تدخل جهة الأكثر، وتُتخطى
+  الصفقة عند التعادل (وتُسجَّل "إشارات متعارضة").
+  confluence نفسها تحتفظ بقاعدتها الداخلية (>=2 في
+  Balanced / >=3 في Conservative) عندما تكون مختارة.
+  كل شيء آخر بلا تغيير: السعر من الصفحة فقط (DOM +
+  خطاف WebSocket)، بلا مصادر خارجية، بلا fetch خارجي،
+  الأوضاع، الفلاتر القابلة للتبديل، ديمو فقط، بلا SSID/API/كوكيز.
 
   ديمو فقط — أتمتة الواجهة مخالفة لشروط Pocket Option وقد
   تؤدي لحظر الحساب حتى على الديمو. للتعلم والتجربة على
@@ -144,12 +205,18 @@
   // ---------- الإعدادات ----------
   var CFG = {
     mode: 'balanced', // conservative | balanced | aggressive
-    strategy: 'confluence',
-    stake: 1.0,               // مبلغ الصفقة بالدولار (ديمو، صغير جداً)
+    // v1.2.0: استراتيجيات متعددة قابلة للاختيار (خانات اختيار في اللوحة)
+    // الافتراضي: confluence + ema_cross_fast. لم يعد هناك استراتيجية واحدة.
+    strategies: ['confluence', 'ema_cross_fast'],
+    strategy: 'confluence', // محفوظ للتوافق الخلفي فقط — لا يُستخدم في decide() بعد الآن
+    stake: 1.0,               // مبلغ الصفقة بالدولار — حقل قابل للتعديل في اللوحة
     expirySec: 60,            // مدة الصفقة بالثواني
-    maxTrades: 10,            // أقصى صفقات في اليوم
+    // v1.2.0: المستخدم لم يحدد أبداً حد 10 صفقات — كان افتراضاً منا.
+    // maxTrades = 0 يعني بلا حد. البوت يتوقف فقط إذا كانت القيمة > 0.
+    maxTrades: 0,             // أقصى عدد صفقات في اليوم (0 = بلا حد)
+    dailyProfitTarget: 10.0,  // الربح اليومي المستهدف بالدولار (0 = بلا هدف)
     dailyLossLimit: 10.0,     // أقصى خسارة يومية بالدولار
-    maxConsecutiveLosses: 3,  // إيقاف بعد 3 خساير ورا بعض
+    maxConsecutiveLosses: 3,  // إيقاف بعد N خساير ورا بعض — حقل قابل للتعديل
     minPayout: 0.85,          // فلتر العائد: مفيش دخول لو العائد أقل من 85%
     minAtrPct: 0.01,          // فلتر ATR: أقل تذبذب مقبول (% من السعر)
     // الفلاتر — كل واحد قابل للتبديل من اللوحة
@@ -164,12 +231,16 @@
   // حتى نرى من لقطة المستخدم ما الذي يراه البوت فعلاً.
   var diagState = { candidates: {}, totalDecimals: 0, svgTexts: 0, shadowRoots: 0, iframes: 0, iframesOk: 0, method: '', lastScanAt: 0 };
   var diagLoggedAt = 0, diagDisplayAt = 0;
-  // v1.1.3: مصدر السعر النشط ('dom' | 'yahoo' | null) وحالة المصدر
-  // الخارجي العام. بلا كوكيز، بلا SSID، بلا API خاص — Yahoo Finance
-  // مصدر عام بلا مصادقة، ويُستخدم فقط إذا غاب سعر DOM 30 ثانية.
-  var priceSource = null; // 'dom' أو 'yahoo' أو null (لا سعر بعد)
-  var yahooLastTryAt = 0, yahooInFlight = false, yahooWarned = false, yahooLastOkAt = 0;
-  var yahooFailSince = 0, currentAsset = '', currentAssetAt = 0;
+  // v1.1.4: مصدر السعر النشط ('dom' | 'ws' | null) — الصفحة فقط.
+  // لا مصادر خارجية إطلاقاً: أُزيلت كل بدائل السعر العامة من الكود.
+  var priceSource = null; // 'dom' أو 'ws' أو null (لا سعر بعد)
+  var currentAsset = '', currentAssetAt = 0;
+  // v1.1.4: حالة خطاف WebSocket (تشخيص ما يراه الخطاف على الصفحة).
+  // wsHookAt: وقت تثبيت الخطاف. wsMessagesSeen: عدد رسائل السوكيت
+  // التي فحصها الخطاف. wsLastMsgAt: وقت آخر رسالة فحصها. wsPriceSeenAt:
+  // وقت آخر سعر استخرجه الخطاف. wsNoPriceWarnAt: وقت آخر تحذير سُجّل.
+  var wsHooked = false, wsHookAt = 0, wsMessagesSeen = 0, wsLastMsgAt = 0;
+  var wsPriceSeenAt = 0, wsNoPriceWarnAt = 0;
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -399,14 +470,37 @@
     ema_cross_fast: 21, breakout_donchian: 20, rsi_scalp: 8
   };
   function requiredCloses() {
-    var sMin = STRATEGY_MIN[CFG.strategy] || 21;
-    return Math.max(mode().need, sMin);
+    // v1.2.0: التسخين العام = حاجة الوضع فقط (21/30/50).
+    // الحد الأدنى لكل استراتيجية يُفحص داخل decideOne() على حدة،
+    // فالاستراتيجية السريعة (مثلاً ema_cross_fast: 21) تستطيع
+    // التداول قبل أن تكتمل شروط استراتيجية أبطأ مختارة معها.
+    return mode().need;
+  }
+  // v1.2.0: هل وصل البوت لأي حد يومي؟ ترجع نص السبب أو null.
+  // تُفحص قبل كل صفقة وبعد كل نتيجة: حد الصفقات (فقط إذا > 0)،
+  // حد الخسارة، هدف الربح، والخسائر المتتالية.
+  function checkDailyLimits() {
+    if (CFG.maxTrades > 0 && tradesToday >= CFG.maxTrades) {
+      return 'وصلنا لحد الصفقات اليومي (' + CFG.maxTrades + ') — إيقاف.';
+    }
+    if (CFG.dailyLossLimit > 0 && dailyProfit <= -CFG.dailyLossLimit) {
+      return 'وصلنا لحد الخسارة اليومية ($' + CFG.dailyLossLimit + ') — إيقاف.';
+    }
+    if (CFG.dailyProfitTarget > 0 && dailyProfit >= CFG.dailyProfitTarget) {
+      return 'وصلنا لهدف الربح اليومي ($' + CFG.dailyProfitTarget + ') — إيقاف.';
+    }
+    if (consecLosses >= CFG.maxConsecutiveLosses) {
+      return CFG.maxConsecutiveLosses + ' خساير ورا بعض — إيقاف.';
+    }
+    return null;
   }
 
   // ---------- الفلاتر (كل واحد قابل للتبديل من اللوحة) ----------
   // ترجع null إذا مرّت، أو نص السبب إذا رفضت الصفقة.
-  function applyFilters(ind, dir) {
+  function applyFilters(ind, dir, strat) {
+    // v1.2.0: strat = الاستراتيجية التي أعطت الإشارة (لفلتر ADX الترندي).
     var f = CFG.filters, m = mode();
+    strat = strat || (CFG.strategies && CFG.strategies[0]) || 'confluence';
     // فلتر الجلسة/الوقت: تجنّب أول 5 دقائق من كل ساعة (افتراضي OFF)
     if (f.session) {
       var min = new Date().getMinutes();
@@ -427,18 +521,20 @@
     }
     // فلتر ADX: للاستراتيجيات الترندية فقط — لا تدخل ترند ضعيف
     var trendStrategies = ['trend_ema_rsi', 'pullback', 'alligator_rsi', 'ema_cross_fast', 'macd_cross', 'breakout_donchian', 'confluence'];
-    if (f.adx && trendStrategies.indexOf(CFG.strategy) !== -1 && ind.adx !== null && ind.adx < 20) {
+    if (f.adx && trendStrategies.indexOf(strat) !== -1 && ind.adx !== null && ind.adx < 20) {
       return 'فلتر ADX: قوة الترند ' + ind.adx.toFixed(0) + ' أقل من 20 — ترند ضعيف';
     }
     return null;
   }
 
   // ---------- الاستراتيجيات ----------
-  // كل استراتيجية ترجع {dir, votes, reason} أو {dir:null, reason}.
-  function decide() {
-    var need = requiredCloses();
-    if (closes.length < need) {
-      return { dir: null, votes: [], reason: 'تسخين ' + closes.length + '/' + need + ' شمعة (' + CFG.mode + ') — أول صفقة بعد ~' + Math.ceil(need * CANDLE_SEC / 60) + ' دقيقة' };
+  // decideOne(s): تقيّم استراتيجية واحدة بالاسم، ترجع
+  // {dir, votes, reason} أو {dir:null, reason}. الحد الأدنى من
+  // الشموع يُفحص هنا لكل استراتيجية على حدة (v1.2.0).
+  function decideOne(s) {
+    var sMin = STRATEGY_MIN[s] || 21;
+    if (closes.length < sMin) {
+      return { dir: null, votes: [], reason: s + ': تسخين ' + closes.length + '/' + sMin + ' شمعة' };
     }
     var ind = allIndicators();
     var last = ind.last, r = ind.r14;
@@ -447,11 +543,11 @@
     // الاصطناعي أثبت أنه يحظر كل صفقات الترند القوي (RSI يبقى
     // 90-100 فترات طويلة في الترند)، فتم تخفيفه إلى 95/5.
     // الاستراتيجيات نفسها أصلاً عندها حدود RSI خاصة بها.
-    if (CFG.strategy !== 'reversal_rsi_stoch' && CFG.strategy !== 'bollinger_bounce' && CFG.strategy !== 'rsi_scalp') {
+    if (s !== 'reversal_rsi_stoch' && s !== 'bollinger_bounce' && s !== 'rsi_scalp') {
       if (r !== null && (r >= 95 || r <= 5)) return { dir: null, votes: [], reason: 'RSI متطرف جداً (' + r.toFixed(0) + ') — تخطّي' };
     }
 
-    var s = CFG.strategy, res = null;
+    var res = null;
 
     if (s === 'trend_ema_rsi') {
       // v1.1.0: حد RSI كان 65/35، لكن في الترند القوي RSI يبقى 70-80
@@ -551,12 +647,61 @@
     if (!res) res = { dir: null, votes: [], reason: 'مفيش إشارة' };
     if (res.dir) {
       // الفلاتر تُطبَّق فقط على إشارة موجودة — وسبب الرفض يُسجَّل
-      var blocked = applyFilters(ind, res.dir);
+      var blocked = applyFilters(ind, res.dir, s);
       if (blocked) return { dir: null, votes: [], reason: blocked + ' — كانت إشارة ' + res.dir };
       // تأكيد إضافي من VWAP/SAR للاستراتيجيات السريعة في الوضع العدواني
       return res;
     }
     return res;
+  }
+
+  // ---------- v1.2.0: decide() متعدد الاستراتيجيات ----------
+  // يقيّم كل استراتيجية مختارة في CFG.strategies، ويجمع إشارات
+  // CALL وإشارات PUT. دخول CALL إذا كانت إشارات CALL >= 1 ولا
+  // إشارات PUT، والعكس لـ PUT. إذا كانت هناك إشارات من الجهتين،
+  // تدخل جهة الأكثر، وتُتخطى الصفقة عند التعادل.
+  function decide() {
+    var need = requiredCloses();
+    if (closes.length < need) {
+      return { dir: null, votes: [], reason: 'تسخين ' + closes.length + '/' + need + ' شمعة (' + CFG.mode + ') — أول صفقة بعد ~' + Math.ceil(need * CANDLE_SEC / 60) + ' دقيقة' };
+    }
+    // v1.2.0: قائمة فارغة صراحة = المستخدم ألغى الكل = لا صفقات.
+    // نعود لـ confluence فقط إذا لم توجد قائمة أصلاً (توافق خلفي).
+    if (!CFG.strategies) return { dir: null, votes: [], reason: 'مفيش استراتيجية مختارة — اختر واحدة على الأقل من اللوحة' };
+    var selected = CFG.strategies.slice();
+    if (!selected.length) return { dir: null, votes: [], reason: 'مفيش استراتيجية مختارة — اختر واحدة على الأقل من اللوحة' };
+    var callSigs = [], putSigs = [], reasons = [];
+    for (var i = 0; i < selected.length; i++) {
+      var one = decideOne(selected[i]);
+      if (one.dir === 'CALL') callSigs.push({ strategy: selected[i], votes: one.votes, reason: one.reason });
+      else if (one.dir === 'PUT') putSigs.push({ strategy: selected[i], votes: one.votes, reason: one.reason });
+      else if (one.reason) reasons.push(one.reason);
+    }
+    if (!callSigs.length && !putSigs.length) {
+      return { dir: null, votes: [], reason: reasons.length ? reasons.join(' | ') : 'مفيش إشارة من الاستراتيجيات المختارة' };
+    }
+    if (callSigs.length > 0 && putSigs.length === 0) {
+      var cv = [];
+      callSigs.forEach(function (x) { cv = cv.concat(x.votes); });
+      return { dir: 'CALL', votes: cv, strategies: callSigs.map(function (x) { return x.strategy; }), reason: 'اتفقت: ' + callSigs.map(function (x) { return x.strategy; }).join('، ') };
+    }
+    if (putSigs.length > 0 && callSigs.length === 0) {
+      var pv = [];
+      putSigs.forEach(function (x) { pv = pv.concat(x.votes); });
+      return { dir: 'PUT', votes: pv, strategies: putSigs.map(function (x) { return x.strategy; }), reason: 'اتفقت: ' + putSigs.map(function (x) { return x.strategy; }).join('، ') };
+    }
+    // إشارات متعارضة من الجهتين: جهة الأكثر تدخل، والتعادل يُتخطى
+    if (callSigs.length > putSigs.length) {
+      var cv2 = [];
+      callSigs.forEach(function (x) { cv2 = cv2.concat(x.votes); });
+      return { dir: 'CALL', votes: cv2, strategies: callSigs.map(function (x) { return x.strategy; }), reason: 'أغلبية CALL (' + callSigs.length + ' ضد ' + putSigs.length + ' PUT) — اتفقت: ' + callSigs.map(function (x) { return x.strategy; }).join('، ') };
+    }
+    if (putSigs.length > callSigs.length) {
+      var pv2 = [];
+      putSigs.forEach(function (x) { pv2 = pv2.concat(x.votes); });
+      return { dir: 'PUT', votes: pv2, strategies: putSigs.map(function (x) { return x.strategy; }), reason: 'أغلبية PUT (' + putSigs.length + ' ضد ' + callSigs.length + ' CALL) — اتفقت: ' + putSigs.map(function (x) { return x.strategy; }).join('، ') };
+    }
+    return { dir: null, votes: [], reason: 'إشارات متعارضة CALL ' + callSigs.length + ' PUT ' + putSigs.length + ' — تخطّي' };
   }
 
   // ---------- قراءة السعر من الصفحة (v1.1.1: متعددة الطرق، لموبايل Pocket Option) ----------
@@ -583,20 +728,17 @@
     return s.indexOf('.') === -1 ? 0 : s.split('.')[1].length;
   }
   function notePrice(v, method, source) {
-    // source: 'dom' (افتراضي) أو 'yahoo' (مصدر عام خارجي، v1.1.3).
+    // source: 'dom' (قراءة من عناصر الصفحة) أو 'ws' (سعر المنصة
+    // نفسه عبر خطاف WebSocket). لا مصادر أخرى في v1.1.4.
     // سجّل طريقة النجاح مرة واحدة عند تغيّرها فقط، حتى لا يمتلئ السجل.
     source = source || 'dom';
-    if (source === 'dom' && priceSource === 'yahoo') {
-      logLine('✅ رجع السعر من الصفحة — وقف المصدر الخارجي (Yahoo)');
-      yahooWarned = false;
-    }
     if (method !== lastPriceMethod) {
       lastPriceMethod = method;
       logLine('السعر من ' + method + ': ' + v);
     }
     priceSource = source;
     lastPrice = v; lastPriceAt = Date.now(); priceFailSince = 0;
-    if (source === 'yahoo') { yahooLastOkAt = Date.now(); yahooFailSince = 0; }
+    if (source === 'ws') { wsPriceSeenAt = Date.now(); }
     diagState.method = method;
     return v;
   }
@@ -657,7 +799,8 @@
       + ' | Shadow: ' + diagState.shadowRoots
       + ' | iframes: ' + diagState.iframesOk + '/' + diagState.iframes
       + (diagState.method ? ' | من: ' + diagState.method : '')
-      + (priceSource === 'yahoo' ? ' | المصدر: Yahoo (خارجي)' : priceSource === 'dom' ? ' | المصدر: الصفحة' : '');
+      + (priceSource === 'ws' ? ' | المصدر: WebSocket المنصة' : priceSource === 'dom' ? ' | المصدر: الصفحة' : '')
+      + ' | WebSocket: ' + (wsHooked ? ('مثبّت، رسائل: ' + wsMessagesSeen + (wsPriceSeenAt ? '، آخر سعر: منذ ' + Math.floor((Date.now() - wsPriceSeenAt) / 1000) + ' ث' : '، بلا سعر بعد')) : 'غير مثبّت');
     diagDisplayAt = Date.now();
   }
   function logDiagCandidates(force) {
@@ -834,16 +977,31 @@
     if (!priceFailSince) priceFailSince = Date.now();
     return null;
   }
+  // v1.2.0: سطر إحصائيات اللوحة — يُحدَّث مع كل حالة/صفقة.
+  // يعرض: صفقات اليوم | صافي اليوم | الهدف | المتبقي للهدف.
+  // الهدف 0 = بلا هدف، فيُعرض "بلا هدف"، والمتبقي "—".
+  function updateStatsDisplay() {
+    var el = document.getElementById('muse-bot-stats');
+    if (!el) return;
+    var target = CFG.dailyProfitTarget || 0;
+    var remaining = target > 0 ? (target - dailyProfit) : null;
+    el.textContent = 'صفقات اليوم: ' + tradesToday
+      + (CFG.maxTrades > 0 ? ' / ' + CFG.maxTrades : '')
+      + ' | صافي اليوم: $' + dailyProfit.toFixed(2)
+      + ' | الهدف: ' + (target > 0 ? '$' + target.toFixed(2) : 'بلا هدف')
+      + ' | المتبقي للهدف: ' + (remaining === null ? '—' : '$' + remaining.toFixed(2))
+      + ' | خسائر متتالية: ' + consecLosses + '/' + CFG.maxConsecutiveLosses;
+  }
   // تحديث عرض السعر في اللوحة: آخر سعر + وقت آخر قراءة ناجحة (v1.1.1)
   function updatePriceDisplay() {
     var el = document.getElementById('muse-bot-price');
     if (!el) return;
     if (lastPrice !== null) {
       var secs = Math.floor((Date.now() - lastPriceAt) / 1000);
-      var srcLabel = priceSource === 'yahoo' ? 'السعر من: Yahoo (خارجي)' : 'السعر من: الصفحة';
+      var srcLabel = priceSource === 'ws' ? 'السعر من: WebSocket المنصة' : 'السعر من: الصفحة';
       el.textContent = 'السعر: ' + lastPrice + ' | ' + srcLabel + ' | آخر قراءة: منذ ' + secs + ' ث (' + lastPriceMethod + ')';
-      // أخضر لسعر الصفحة، برتقالي لسعر Yahoo الخارجي (تقريبي)
-      el.style.color = priceSource === 'yahoo' ? '#f39c12' : (secs > 10 ? '#f39c12' : '#2ecc71');
+      // أخضر لكلا مصدري الصفحة (DOM و WebSocket — كلاهما سعر المنصة نفسه)
+      el.style.color = secs > 10 ? '#f39c12' : '#2ecc71';
     } else {
       el.textContent = 'السعر: - | آخر قراءة: لم تُقرأ بعد';
       el.style.color = '#e74c3c';
@@ -855,130 +1013,314 @@
     var now = Date.now();
     if (now - priceFailSince >= 60000 && now - priceWarnLoggedAt >= 60000) {
       priceWarnLoggedAt = now;
-      logLine('⚠️ مش لاقي السعر في الصفحة ولا من Yahoo منذ 60 ثانية - جرّب وضع سطح المكتب أو أعد تحميل الصفحة');
+      logLine('⚠️ مش لاقي السعر في الصفحة ولا من WebSocket منذ 60 ثانية - جرّب إعادة تحميل الصفحة');
     }
   }
-  // ---------- مصدر السعر الخارجي العام (v1.1.3) — Yahoo Finance ----------
-  // لا كوكيز، لا SSID، لا توكن، لا API خاص: Yahoo Finance مصدر
-  // عام بلا مصادقة. يُستخدم فقط إذا غاب سعر DOM لمدة 30 ثانية
-  // (وهو حال موبايل Pocket Option، حيث السعر مرسوم على Canvas).
-  // ⚠️ سعر Yahoo هو سعر السوق الحقيقي العام، أما سعر Pocket Option
-  // OTC فهو سعر صناعي خاص بالمنصة وقد يختلف عنه — فالإشارات
-  // المبنية على هذا المصدر تقريبية فقط، وليست سعر المنصة نفسه.
-  // جدول الزوج -> رمز Yahoo (صريح أولاً، ثم قاعدة عامة للفوركس).
-  var YAHOO_MAP = {
-    'AUD/CAD': 'AUDCAD=X', 'EUR/USD': 'EURUSD=X', 'GBP/USD': 'GBPUSD=X',
-    'USD/JPY': 'USDJPY=X', 'AUD/USD': 'AUDUSD=X', 'EUR/JPY': 'EURJPY=X',
-    'GBP/JPY': 'GBPJPY=X', 'USD/CAD': 'USDCAD=X', 'NZD/USD': 'NZDUSD=X',
-    'USD/CHF': 'USDCHF=X', 'EUR/GBP': 'EURGBP=X', 'AUD/JPY': 'AUDJPY=X',
-    'EUR/AUD': 'EURAUD=X', 'GBP/AUD': 'GBPAUD=X', 'NZD/JPY': 'NZDJPY=X',
-    'AUD/NZD': 'AUDNZD=X', 'EUR/CAD': 'EURCAD=X', 'GBP/CAD': 'GBPCAD=X',
-    'EUR/CHF': 'EURCHF=X', 'GBP/CHF': 'GBPCHF=X', 'USD/MXN': 'USDMXN=X',
-    'USD/ZAR': 'USDZAR=X', 'USD/TRY': 'USDTRY=X', 'EUR/NZD': 'EURNZD=X',
-    'GBP/NZD': 'GBPNZD=X', 'CAD/JPY': 'CADJPY=X', 'CHF/JPY': 'CHFJPY=X',
-    'BTC/USD': 'BTC-USD', 'ETH/USD': 'ETH-USD', 'LTC/USD': 'LTC-USD',
-    'XRP/USD': 'XRP-USD', 'SOL/USD': 'SOL-USD', 'DOGE/USD': 'DOGE-USD',
-    'XAU/USD': 'GC=F', 'XAG/USD': 'SI=F', 'USOIL': 'CL=F', 'UKOIL': 'BZ=F',
-    'OIL/USD': 'CL=F', 'BRENT/USD': 'BZ=F'
-  };
-  function yahooSymbolForAsset(asset) {
-    if (!asset) return null;
-    // نظّف الاسم: "AUD/CAD OTC" -> "AUD/CAD"، "BTC/USD" كما هو.
-    var a = String(asset).toUpperCase().replace(/\s*OTC\s*/g, '').replace(/[^A-Z\/]/g, '').trim();
-    if (YAHOO_MAP[a]) return YAHOO_MAP[a];
-    // قاعدة عامة للفوركس: أي زوج XXX/YYY من 3 حروف -> XXXYYY=X
-    var m = a.match(/^([A-Z]{3})\/([A-Z]{3})$/);
-    if (m) return m[1] + m[2] + '=X';
-    return null;
+  // v1.1.4: إذا مرت 60 ثانية على تثبيت خطاف WebSocket ولم يرَ أي
+  // رسالة سعر، سجّل ذلك بالعربي (مرة كل 60 ثانية كحد أقصى) واستمر
+  // في المحاولة — لا تتوقف، فقد يعيد السوكيت الاتصال لاحقاً.
+  function warnWsNoPrice() {
+    if (!wsHooked || !wsHookAt) return;
+    var now = Date.now();
+    if (now - wsHookAt < 60000) return;
+    if (wsPriceSeenAt) return;
+    if (now - wsNoPriceWarnAt < 60000) return;
+    wsNoPriceWarnAt = now;
+    if (wsMessagesSeen === 0) {
+      logLine('⚠️ خطاف WebSocket مثبّت لكن مفيش أي رسائل وصلت من سوكيت الصفحة منذ 60 ثانية — السوكيت ممكن يكون اتفتح قبل الحقن، جرّب إعادة تحميل الصفحة');
+    } else {
+      logLine('⚠️ خطاف WebSocket فحص ' + wsMessagesSeen + ' رسالة من سوكيت الصفحة لكن مفيش فيها سعر الزوج الحالي (' + (readAssetName() || '؟') + ') منذ 60 ثانية — مستمر في المحاولة');
+    }
   }
-  // اقرأ اسم الزوج الحالي من الصفحة (مثلاً "AUD/CAD OTC")، مع تخزين
-  // مؤقت 60 ثانية حتى لا نمسح innerText كل ثانية.
+  // ---------- قراءة اسم الزوج الحالي من الصفحة (لخطاف WebSocket) ----------
+  // مثلاً "AUD/CAD OTC" -> "AUD/CAD". قراءة من نص الصفحة فقط،
+  // مع تخزين مؤقت 60 ثانية حتى لا نمسح innerText كل ثانية.
   function readAssetName() {
     var now = Date.now();
     if (currentAsset && now - currentAssetAt < 60000) return currentAsset;
     try {
       var txt = (document.body && (document.body.innerText || document.body.textContent)) || '';
-      // أولاً: أزواج معروفة (فوركس / كريبتو / ذهب) — الأطول أولاً.
-      var known = Object.keys(YAHOO_MAP);
-      for (var i = 0; i < known.length; i++) {
-        if (txt.indexOf(known[i]) !== -1) { currentAsset = known[i]; currentAssetAt = now; return currentAsset; }
-      }
-      // ثانياً: أي نمط XXX/YYY عام (3 حروف / 3 حروف).
       var m = txt.match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
       if (m) { currentAsset = m[1] + '/' + m[2]; currentAssetAt = now; return currentAsset; }
     } catch (e) { /* تجاهل */ }
     currentAsset = ''; currentAssetAt = now;
     return '';
   }
-  // استخرج السعر من رد Yahoo: chart API (meta.regularMarketPrice)
-  // أو quote API (quoteResponse.result[0].regularMarketPrice).
-  function parseYahooPrice(json) {
-    try {
-      if (json && json.chart && json.chart.result && json.chart.result[0] && json.chart.result[0].meta) {
-        var p = json.chart.result[0].meta.regularMarketPrice;
-        if (typeof p === 'number' && isFinite(p) && p > 0) return p;
-      }
-      if (json && json.quoteResponse && json.quoteResponse.result && json.quoteResponse.result[0]) {
-        var q = json.quoteResponse.result[0].regularMarketPrice;
-        if (typeof q === 'number' && isFinite(q) && q > 0) return q;
-      }
-    } catch (e) { /* تجاهل */ }
+  function assetNorm6() {
+    var a = readAssetName();
+    return a ? a.replace('/', '') : '';
+  }
+
+  // ---------- استخراج السعر من رسالة WebSocket (دالة نقية، قابلة للاختبار) ----------
+  // data: نص الرسالة أو كائن JSON مفكوك (أو مصفوفة). asset6: رمز الزوج
+  // موحّداً (6 حروف، مثلاً "AUDCAD") أو '' إذا كان غير معروف.
+  // ترجع {price, asset} أو null. تتعامل مع أشكال الرسائل الشائعة:
+  // {"symbol":"AUDCAD","price":1.00264}، {"data":{"AUDCAD":1.00264}}،
+  // {"quotes":[{"symbol":"AUDCAD","close":1.00264}]}، ["quote", {...}].
+  var WS_PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price'];
+  function normWsSymbol(s) {
+    if (!s) return '';
+    return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, '');
+  }
+  function wsNum(v) {
+    if (typeof v === 'number' && isFinite(v) && v > 0 && v < 200000) return v;
+    if (typeof v === 'string') {
+      var n = parseFloat(v.replace(/,/g, ''));
+      if (isFinite(n) && n > 0 && n < 200000) return n;
+    }
     return null;
   }
-  // جلب سعر Yahoo لزوج معين. يرجع Promise<number|null>.
-  // query1 أولاً، ثم query2 كبديل. بلا كوكيز/مصادقة (fetch عادي).
-  // ملاحظة: إذا حظر المتصفح الطلب بسبب CORS، يفشل بهدوء ويرجع null.
-  async function fetchYahooPrice(symbol) {
-    if (!symbol || typeof fetch === 'undefined') return null;
-    var hosts = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
-    for (var i = 0; i < hosts.length; i++) {
-      try {
-        var res = await fetch(hosts[i] + '/v8/finance/chart/' + encodeURIComponent(symbol), { method: 'GET', credentials: 'omit' });
-        if (!res || !res.ok) continue;
-        var json = await res.json();
-        var price = parseYahooPrice(json);
-        if (price !== null) return price;
-      } catch (e) { /* جرّب المضيف التالي */ }
-    }
-    // بديل أخير: quote API
-    try {
-      var res2 = await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + encodeURIComponent(symbol), { method: 'GET', credentials: 'omit' });
-      if (res2 && res2.ok) {
-        var json2 = await res2.json();
-        return parseYahooPrice(json2);
-      }
-    } catch (e) { /* تجاهل */ }
-    return null;
-  }
-  // المحاولة الخارجية: تُستدعى من الحلقة الرئيسية فقط عندما يغيب
-  // سعر DOM منذ 30 ثانية، وبحد أقصى محاولة كل 5 ثوانٍ (حتى لا
-  // نُغرق Yahoo بطلبات). ترجع السعر أو null.
-  async function tryYahooFallback() {
-    if (yahooInFlight) return null;
-    var now = Date.now();
-    if (now - yahooLastTryAt < 5000) return null;
-    yahooLastTryAt = now;
-    var asset = readAssetName();
-    var symbol = yahooSymbolForAsset(asset);
-    if (!symbol) {
-      if (!yahooFailSince) yahooFailSince = now;
-      return null;
-    }
-    yahooInFlight = true;
-    try {
-      var price = await fetchYahooPrice(symbol);
-      if (price !== null) {
-        if (!yahooWarned) {
-          yahooWarned = true;
-          logLine('⚠️ السعر من مصدر خارجي عام (Yahoo: ' + symbol + ') - سعر Pocket Option OTC ممكن يختلف عنه، فالإشارات تقريبية');
+  function extractWsPrice(data, asset6) {
+    var target = normWsSymbol(asset6 || '');
+    var found = null;
+    function priceFromObj(obj, sym) {
+      for (var i = 0; i < WS_PRICE_KEYS.length; i++) {
+        var k = WS_PRICE_KEYS[i];
+        if (obj[k] !== undefined) {
+          var p = wsNum(obj[k]);
+          if (p !== null) return { price: p, asset: sym || target };
         }
-        return notePrice(price, 'Yahoo ' + symbol, 'yahoo');
       }
-      if (!yahooFailSince) yahooFailSince = now;
       return null;
-    } finally {
-      yahooInFlight = false;
     }
+    function walk(node, ctxSym, depth) {
+      if (found || depth > 6) return;
+      if (typeof node === 'string') {
+        var t = node.trim();
+        if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
+          try { walk(JSON.parse(t), ctxSym, depth + 1); } catch (e) { /* ليست JSON */ }
+        }
+        return;
+      }
+      if (Array.isArray(node)) {
+        for (var i = 0; i < node.length; i++) walk(node[i], ctxSym, depth + 1);
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+      var sym = ctxSym || '';
+      var sk = ['symbol', 'asset', 'pair', 'instrument', 'code', 'name', 'ticker'];
+      for (var s = 0; s < sk.length; s++) {
+        if (typeof node[sk[s]] === 'string') { sym = normWsSymbol(node[sk[s]]) || sym; break; }
+      }
+      // مفتاح يحمل اسم الزوج مباشرة: {"AUDCAD": 1.00264}
+      var keys = Object.keys(node);
+      for (var k = 0; k < keys.length; k++) {
+        if (target && normWsSymbol(keys[k]) === target) {
+          var pv = wsNum(node[keys[k]]);
+          if (pv !== null) { found = { price: pv, asset: target }; return; }
+        }
+      }
+      // كائن رمزه مطابق للزوج المطلوب (أو الرمز غير معروف أصلاً):
+      // ابحث عن حقل سعر فيه، ومرّر الرمز للأولاد (مثل data:{price}).
+      if (sym && (!target || sym === target)) {
+        var r = priceFromObj(node, sym);
+        if (r) { found = r; return; }
+      }
+      for (var j = 0; j < keys.length; j++) walk(node[keys[j]], sym, depth + 1);
+    }
+    try { walk(data, '', 0); } catch (e) { /* تجاهل */ }
+    return found;
+  }
+
+  // ---------- خطاف WebSocket (v1.1.4) — قراءة من الصفحة فقط ----------
+  // السكربت يحقن هذه الدالة كـ <script> في سياق الصفحة نفسه، فتعمل
+  // داخل عالم الصفحة (وليس عالم السكربت المعزول)، وتغلّف WebSocket:
+  // (1) منشئ WebSocket — أي سوكيت جديد يُنشأ بعد الحقن يُعلَّق عليه
+  // مستمع رسائل داخلي؛ (2) WebSocket.prototype.addEventListener —
+  // أي مستمع 'message' يضيفه كود الصفحة يُغلَّف ليفحص الرسالة أولاً؛
+  // (3) خاصية onmessage — أي تعيين ws.onmessage = fn يُغلَّف كذلك.
+  // كل رسالة واردة تُفحص بـ extract (نسخة مستقلة داخل الدالة)، وإن
+  // وُجد سعر الزوج الحالي يُنشر في عنصر DOM مخفي #muse-po-price
+  // (data-price / data-asset / data-time / data-msgs) وفي
+  // window.__poPrice، فيقرأه السكربت من هناك. لا يُرسل الخطاف أي
+  // شيء إلى أي خادم، ولا يقرأ أي كوكيز، ولا يمس أي بيانات دخول —
+  // الرسائل أصلاً تتدفق في متصفح المستخدم، والخطاف يستمع لها فقط.
+  // قيد معروف: سوكيت كان مفتوحاً قبل الحقن، ومستمعوه أُضيفوا قبل
+  // الحقن، لن يُمسك حتى يعيد الاتصال — لهذا @run-at هو
+  // document-start، حتى يكون الخطاف موجوداً قبل أن تنشئ الصفحة
+  // سوكيتها. عدد الرسائل في التشخيص تقريبي (قد يُفحص نفس الرسالة
+  // أكثر من مرة إن مرت بأكثر من مسار تغليف).
+  function wsHookPageFn() {
+    try {
+      var BRIDGE_ID = 'muse-po-price';
+      var PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price'];
+      function normSym(s) { try { return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, ''); } catch (e) { return ''; } }
+      function numVal(v) {
+        if (typeof v === 'number' && isFinite(v) && v > 0 && v < 200000) return v;
+        if (typeof v === 'string') { var n = parseFloat(v.replace(/,/g, '')); if (isFinite(n) && n > 0 && n < 200000) return n; }
+        return null;
+      }
+      function assetNow() {
+        try {
+          var t = (document.body && (document.body.innerText || document.body.textContent)) || '';
+          var m = t.match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
+          return m ? m[1] + m[2] : '';
+        } catch (e) { return ''; }
+      }
+      function extract(data, target, depth, ctxSym) {
+        if (depth > 6) return null;
+        if (typeof data === 'string') {
+          var t = data.trim();
+          if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
+            try { return extract(JSON.parse(t), target, depth + 1, ctxSym); } catch (e) { return null; }
+          }
+          return null;
+        }
+        if (Array.isArray(data)) {
+          for (var i = 0; i < data.length; i++) { var r = extract(data[i], target, depth + 1, ctxSym); if (r) return r; }
+          return null;
+        }
+        if (!data || typeof data !== 'object') return null;
+        var sym = ctxSym || '';
+        var sk = ['symbol', 'asset', 'pair', 'instrument', 'code', 'name', 'ticker'];
+        for (var s = 0; s < sk.length; s++) { if (typeof data[sk[s]] === 'string') { sym = normSym(data[sk[s]]) || sym; break; } }
+        var keys = Object.keys(data), k, j;
+        for (k = 0; k < keys.length; k++) {
+          if (target && normSym(keys[k]) === target) {
+            var pv = numVal(data[keys[k]]);
+            if (pv !== null) return { price: pv, asset: target };
+          }
+        }
+        if (sym && (!target || sym === target)) {
+          for (var p = 0; p < PRICE_KEYS.length; p++) {
+            if (data[PRICE_KEYS[p]] !== undefined) {
+              var q = numVal(data[PRICE_KEYS[p]]);
+              if (q !== null) return { price: q, asset: sym };
+            }
+          }
+        }
+        for (j = 0; j < keys.length; j++) {
+          var child = data[keys[j]];
+          if (child && typeof child === 'object') { var rr = extract(child, target, depth + 1, sym); if (rr) return rr; }
+        }
+        return null;
+      }
+      var seen = 0;
+      function publish(price, asset) {
+        try {
+          window.__poPrice = { price: price, asset: asset || '', time: Date.now(), source: 'websocket' };
+          var b = document.getElementById(BRIDGE_ID);
+          if (b) {
+            b.setAttribute('data-price', String(price));
+            b.setAttribute('data-asset', asset || '');
+            b.setAttribute('data-time', String(Date.now()));
+            b.setAttribute('data-msgs', String(seen));
+          }
+        } catch (e) {}
+      }
+      function inspect(raw) {
+        try {
+          seen++;
+          var b = document.getElementById(BRIDGE_ID);
+          if (b) b.setAttribute('data-msgs', String(seen));
+          var r = extract(raw, assetNow(), 0, '');
+          if (r) publish(r.price, r.asset);
+        } catch (e) {}
+      }
+      // (2) غلّف addEventListener: مستمعو 'message' الجدد يُغلَّفون.
+      // المستمع الداخلي للخطاف نفسه (الموسوم __poInternal) لا يُغلَّف
+      // حتى لا يُفحص نفس الرسالة مرتين.
+      try {
+        var origAdd = WebSocket.prototype.addEventListener;
+        WebSocket.prototype.addEventListener = function (type, listener, opts) {
+          if (type === 'message' && typeof listener === 'function' && !listener.__poInternal) {
+            var self = this;
+            var wrapped = function (ev) { try { inspect(ev.data); } catch (e) {} try { return listener.call(self, ev); } catch (e) {} };
+            return origAdd.call(this, type, wrapped, opts);
+          }
+          return origAdd.call(this, type, listener, opts);
+        };
+      } catch (e) {}
+      // (3) غلّف خاصية onmessage: تعيين ws.onmessage = fn يُغلَّف.
+      try {
+        Object.defineProperty(WebSocket.prototype, 'onmessage', {
+          configurable: true,
+          get: function () { return this.__poOnMsg; },
+          set: function (fn) {
+            var self = this;
+            if (typeof fn === 'function') {
+              this.__poOnMsg = function (ev) { try { inspect(ev.data); } catch (e) {} try { return fn.call(self, ev); } catch (e) {} };
+            } else { this.__poOnMsg = fn; }
+          }
+        });
+      } catch (e) {}
+      // (1) غلّف منشئ WebSocket: أي سوكيت جديد يُعلَّق عليه مستمع داخلي.
+      try {
+        var OrigWS = window.WebSocket;
+        function WSProxy(url, protocols) {
+          var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+          try {
+            var internal = function (ev) { try { inspect(ev.data); } catch (e) {} };
+            internal.__poInternal = true;
+            ws.addEventListener('message', internal);
+          } catch (e) {}
+          return ws;
+        }
+        WSProxy.prototype = OrigWS.prototype;
+        WSProxy.CONNECTING = OrigWS.CONNECTING; WSProxy.OPEN = OrigWS.OPEN;
+        WSProxy.CLOSING = OrigWS.CLOSING; WSProxy.CLOSED = OrigWS.CLOSED;
+        window.WebSocket = WSProxy;
+      } catch (e) {}
+    } catch (e) {}
+  }
+  // ثبّت الخطاف فوراً (يُستدعى مرة واحدة عند بدء السكربت، قبل أن
+  // تنشئ الصفحة سوكيتها — لهذا @run-at هو document-start).
+  // ينشئ عنصر الجسر المخفي #muse-po-price أولاً، ثم يحقن دالة
+  // الخطاف كـ <script> في سياق الصفحة ويحذف عنصر السكربت بعدها.
+  function injectWsHook() {
+    try {
+      if (wsHooked) return;
+      var doc = document;
+      var root = doc.documentElement;
+      if (!root) return;
+      if (!doc.getElementById('muse-po-price')) {
+        var bridge = doc.createElement('div');
+        bridge.id = 'muse-po-price';
+        bridge.style.display = 'none';
+        bridge.setAttribute('data-price', '');
+        bridge.setAttribute('data-asset', '');
+        bridge.setAttribute('data-time', '0');
+        bridge.setAttribute('data-msgs', '0');
+        root.appendChild(bridge);
+      }
+      var s = doc.createElement('script');
+      s.textContent = '(' + wsHookPageFn.toString() + ')();';
+      (doc.head || root).appendChild(s);
+      if (s.parentNode) s.parentNode.removeChild(s);
+      wsHooked = true; wsHookAt = Date.now();
+      logLine('🔌 خطاف WebSocket مثبّت — بيستمع لرسائل سوكيت المنصة نفسها');
+    } catch (e) { /* الحقن فشل: نكمل بقراءة DOM فقط */ }
+  }
+  // مزامنة عدّاد رسائل الخطاف إلى متغيرات التشخيص (كل ثانية).
+  function syncWsDiag() {
+    try {
+      var b = document.getElementById('muse-po-price');
+      if (!b) return;
+      var msgs = parseInt(b.getAttribute('data-msgs') || '0', 10);
+      if (!isNaN(msgs) && msgs > wsMessagesSeen) { wsMessagesSeen = msgs; wsLastMsgAt = Date.now(); }
+    } catch (e) { /* تجاهل */ }
+  }
+  // اقرأ سعر WebSocket من الجسر (أو window.__poPrice إن كان في نفس
+  // السياق). السعر صالح فقط إن كان حديثاً (أقل من 15 ثانية).
+  function readWsPrice() {
+    try {
+      syncWsDiag();
+      var b = document.getElementById('muse-po-price');
+      if (b) {
+        var t = parseInt(b.getAttribute('data-time') || '0', 10);
+        var pv = parsePriceText(b.getAttribute('data-price') || '');
+        if (pv !== null && t && Date.now() - t < 15000) {
+          return notePrice(pv, 'WebSocket المنصة', 'ws');
+        }
+      }
+      if (typeof window !== 'undefined' && window.__poPrice && window.__poPrice.price) {
+        var wp = window.__poPrice;
+        if (wp.time && Date.now() - wp.time < 15000) {
+          return notePrice(wp.price, 'WebSocket المنصة', 'ws');
+        }
+      }
+    } catch (e) { /* تجاهل */ }
+    return null;
   }
   function readPayout() {
     var m = document.body.innerText.match(/(\d{1,3})\s*%/);
@@ -1008,8 +1350,10 @@
   // ---------- تنفيذ الصفقة (ضغطة زر في الواجهة) ----------
   async function executeTrade(dir, votes) {
     if (Date.now() - lastTradeAt < cooldownSec() * 1000) { logSkip('تبريد: لسه ماعداش ' + cooldownSec() + ' ثانية من آخر صفقة'); return; }
-    if (tradesToday >= CFG.maxTrades) { logLine('وصلنا لحد الصفقات اليومي — إيقاف.'); stopBot(); return; }
-    if (dailyProfit <= -CFG.dailyLossLimit) { logLine('وصلنا لحد الخسارة اليومية — إيقاف.'); stopBot(); return; }
+    // v1.2.0: كل الحدود اليومية تُفحص هنا (صفقات فقط إذا > 0،
+    // خسارة، هدف ربح، خسائر متتالية) — القيم كلها من اللوحة.
+    var limitReason = checkDailyLimits();
+    if (limitReason) { logLine(limitReason); stopBot(); return; }
     if (CFG.filters.payout) {
       var payout = readPayout();
       if (payout < CFG.minPayout) { logLine('العائد ' + Math.round(payout * 100) + '% أقل من ' + Math.round(CFG.minPayout * 100) + '% — تخطّي.'); return; }
@@ -1032,24 +1376,26 @@
       else if (Math.abs(diff) < 0.01) { result = 'draw'; }
     }
     dailyProfit += profit;
-    if (result === 'loss') { consecLosses++; if (consecLosses >= CFG.maxConsecutiveLosses) { logLine('3 خساير ورا بعض — إيقاف.'); stopBot(); } }
+    if (result === 'loss') { consecLosses++; }
     else if (result === 'win') consecLosses = 0;
     logLine('نتيجة الصفقة: ' + result + ' | صافي اليوم: $' + dailyProfit.toFixed(2));
+    updateStatsDisplay();
+    // v1.2.0: بعد كل نتيجة، افحص الحدود اليومية (هدف الربح
+    // والخسارة والخسائر المتتالية) وتوقف فوراً إذا تحقق أي منها.
+    var afterReason = checkDailyLimits();
+    if (afterReason) { logLine(afterReason); stopBot(); }
   }
 
   // ---------- الحلقة الرئيسية: بناء شموع 15 ثانية من السعر الحي ----------
-  // v1.1.3: إذا غاب سعر DOM لمدة 30 ثانية، جرّب Yahoo (مصدر عام).
+  // v1.1.4 — الصفحة فقط: سعر DOM أولاً، فإن غاب فخطاف WebSocket
+  // (سعر المنصة نفسه). لا مصادر خارجية إطلاقاً.
   setInterval(async function () {
     if (!running) return;
+    syncWsDiag();
     var price = readPrice();
-    if (!price) {
-      // سعر DOM غائب منذ 30 ثانية على الأقل؟ جرّب المصدر الخارجي.
-      if (priceFailSince && Date.now() - priceFailSince >= 30000) {
-        price = await tryYahooFallback();
-      }
-    }
+    if (!price) price = readWsPrice();
     updatePriceDisplay();
-    if (!price) { warnPriceMissing(); return; }
+    if (!price) { warnPriceMissing(); warnWsNoPrice(); return; }
     var now = Math.floor(Date.now() / 1000);
     var bucket = now - (now % CANDLE_SEC);
     if (!curCandle || curCandle.time !== bucket) {
@@ -1071,6 +1417,7 @@
     if (!running) return;
     updatePriceDisplay();
     updateDiagDisplay();
+    updateStatsDisplay();
     var need = requiredCloses();
     var status = document.getElementById('muse-bot-status');
     if (closes.length < need) {
@@ -1099,7 +1446,7 @@
     p.id = 'muse-bot-panel';
     p.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:999999;background:#222;color:#fff;'
       + 'padding:12px;border-radius:10px;font-size:13px;width:250px;max-height:85vh;overflow:auto;box-shadow:0 0 12px #000;';
-    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.1.3</b><br>'
+    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.2.0</b><br>'
       + '<span style="color:#f39c12">ديمو بس — أتمتة الواجهة مخالفة لشروط المنصة وقد تؤدي للحظر.</span><br>'
       + 'الوضع: <select id="muse-mode">'
       + Object.keys(MODES).map(function (k) {
@@ -1107,11 +1454,20 @@
         }).join('')
       + '</select><br>'
       + '<span style="color:#aaa;font-size:11px">Conservative: 50 شمعة / 3 مؤشرات — Balanced: 30 / 2 — Aggressive: 21 / 1</span><br>'
-      + 'الاستراتيجية: <select id="muse-strategy">'
+      + '<div style="margin-top:6px">الاستراتيجيات (اختار واحدة أو أكثر):<br>'
       + STRATEGIES.map(function (s) {
-          return '<option value="' + s + '"' + (s === CFG.strategy ? ' selected' : '') + '>' + s + '</option>';
-        }).join('')
-      + '</select><br>'
+          var checked = (CFG.strategies || []).indexOf(s) !== -1 ? ' checked' : '';
+          return '<label style="display:inline-block;margin-right:8px"><input type="checkbox" class="muse-strat" value="' + s + '"' + checked + '> ' + s + '</label>';
+        }).join('<br>')
+      + '<br><button id="muse-strat-all" style="padding:4px 10px;margin:4px 4px 0 0">اختر الكل</button>'
+      + '<button id="muse-strat-none" style="padding:4px 10px;margin-top:4px">إلغاء الكل</button></div>'
+      + '<div style="margin-top:8px;font-size:12px">'
+      + 'مبلغ الصفقة ($): <input id="muse-stake" type="number" min="0.1" step="0.1" value="' + CFG.stake + '" style="width:60px"><br>'
+      + 'الربح اليومي المستهدف ($): <input id="muse-target" type="number" min="0" step="1" value="' + CFG.dailyProfitTarget + '" style="width:60px"> <span style="color:#aaa">(0 = بلا هدف)</span><br>'
+      + 'الخسارة اليومية القصوى ($): <input id="muse-loss" type="number" min="0" step="1" value="' + CFG.dailyLossLimit + '" style="width:60px"><br>'
+      + 'أقصى عدد صفقات في اليوم: <input id="muse-maxtrades" type="number" min="0" step="1" value="' + CFG.maxTrades + '" style="width:60px"> <span style="color:#aaa">(0 = بلا حد)</span><br>'
+      + 'إيقاف بعد خسائر متتالية: <input id="muse-consec" type="number" min="1" step="1" value="' + CFG.maxConsecutiveLosses + '" style="width:60px"><br>'
+      + '</div>'
       + 'أقل عائد: <select id="muse-payout">'
       + [0.80, 0.85, 0.90, 0.92, 0.95].map(function (v) {
           return '<option value="' + v + '"' + (v === CFG.minPayout ? ' selected' : '') + '>' + Math.round(v * 100) + '%</option>';
@@ -1127,6 +1483,7 @@
       + '<button id="muse-start" style="background:#27ae60;color:#fff;padding:8px 14px;border:none;border-radius:6px;margin-top:8px">▶ START</button> '
       + '<button id="muse-stop" style="background:#c0392b;color:#fff;padding:8px 14px;border:none;border-radius:6px">⛔ STOP</button>'
       + '<div id="muse-bot-status" style="margin-top:8px;color:#ccc">مستني START...</div>'
+      + '<div id="muse-bot-stats" style="margin-top:4px;font-size:12px;color:#2ecc71">صفقات اليوم: 0 | صافي اليوم: $0.00 | الهدف: $10.00 | المتبقي للهدف: $10.00 | خسائر متتالية: 0/3</div>'
       + '<div id="muse-bot-price" style="margin-top:4px;font-size:12px;color:#e74c3c">السعر: - | آخر قراءة: لم تُقرأ بعد</div>'
       + '<div id="muse-bot-diag" style="margin-top:4px;font-size:11px;color:#aaa;word-wrap:break-word">🔍 تشخيص السعر: جارٍ الفحص...</div>'
       + '<pre id="muse-bot-log" style="max-height:140px;overflow:auto;font-size:11px;color:#aaa"></pre>';
@@ -1136,7 +1493,50 @@
       document.getElementById('muse-f-chop').checked = mode().chop && CFG.filters.chop;
       logLine('الوضع: ' + MODES[CFG.mode].label + ' — تسخين ' + mode().need + ' شمعة، تبريد ' + mode().cooldownSec + ' ثانية');
     };
-    document.getElementById('muse-strategy').onchange = function (e) { CFG.strategy = e.target.value; logLine('الاستراتيجية: ' + CFG.strategy + ' — محتاجة ' + (STRATEGY_MIN[CFG.strategy] || 21) + ' شمعة على الأقل'); };
+    // v1.2.0: خانات اختيار الاستراتيجيات — تُحدَّث CFG.strategies فوراً
+    function syncStrategiesFromPanel() {
+      var boxes = document.querySelectorAll('.muse-strat');
+      var sel = [];
+      for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) sel.push(boxes[i].value);
+      CFG.strategies = sel;
+      CFG.strategy = sel.length ? sel[0] : 'confluence';
+      updateStatsDisplay();
+      return sel;
+    }
+    var stratBoxes = document.querySelectorAll('.muse-strat');
+    for (var si = 0; si < stratBoxes.length; si++) {
+      stratBoxes[si].onchange = function () {
+        var sel = syncStrategiesFromPanel();
+        logLine(sel.length ? ('الاستراتيجيات المختارة (' + sel.length + '): ' + sel.join('، ')) : 'مفيش استراتيجية مختارة — البوت مش هيدخل صفقات');
+      };
+    }
+    document.getElementById('muse-strat-all').onclick = function () {
+      var boxes = document.querySelectorAll('.muse-strat');
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = true;
+      var sel = syncStrategiesFromPanel();
+      logLine('اختر الكل: ' + sel.length + ' استراتيجية');
+    };
+    document.getElementById('muse-strat-none').onclick = function () {
+      var boxes = document.querySelectorAll('.muse-strat');
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
+      syncStrategiesFromPanel();
+      logLine('إلغاء الكل: مفيش استراتيجية مختارة');
+    };
+    // v1.2.0: حقول الحدود القابلة للتعديل — أي تغيير يُحفظ فوراً في CFG
+    function bindNum(id, key, label, minVal) {
+      document.getElementById(id).onchange = function (e) {
+        var v = parseFloat(e.target.value);
+        if (isNaN(v) || v < minVal) { v = minVal; e.target.value = v; }
+        CFG[key] = v;
+        updateStatsDisplay();
+        logLine(label + ': ' + v);
+      };
+    }
+    bindNum('muse-stake', 'stake', 'مبلغ الصفقة', 0.1);
+    bindNum('muse-target', 'dailyProfitTarget', 'الربح اليومي المستهدف', 0);
+    bindNum('muse-loss', 'dailyLossLimit', 'الخسارة اليومية القصوى', 0);
+    bindNum('muse-maxtrades', 'maxTrades', 'أقصى عدد صفقات في اليوم', 0);
+    bindNum('muse-consec', 'maxConsecutiveLosses', 'إيقاف بعد خسائر متتالية', 1);
     document.getElementById('muse-payout').onchange = function (e) { CFG.minPayout = parseFloat(e.target.value); logLine('أقل عائد: ' + Math.round(CFG.minPayout * 100) + '%'); };
     function bindFilter(id, key) {
       document.getElementById(id).onchange = function (e) { CFG.filters[key] = e.target.checked; logLine('فلتر ' + key + ': ' + (e.target.checked ? 'مفعّل' : 'مطفأ')); };
@@ -1147,7 +1547,11 @@
       if (!isDemo()) { alert('الحساب مش ديمو! بدّل للديمو الأول — السكربت مش هيشتغل على حساب حقيقي.'); return; }
       if (!confirm('تأكيد: الحساب ده ديمو فعلاً؟ السكربت هيضغط CALL/PUT بنفسه.')) return;
       running = true;
-      logLine('السكربت شغال — وضع ' + CFG.mode + '، استراتيجية ' + CFG.strategy + ' — تسخين ' + requiredCloses() + ' شمعة (~' + Math.ceil(requiredCloses() * CANDLE_SEC / 60) + ' دقيقة)');
+      updateStatsDisplay();
+      var selStr = (CFG.strategies && CFG.strategies.length) ? CFG.strategies.join('، ') : 'مفيش';
+      logLine('السكربت شغال — وضع ' + CFG.mode + '، استراتيجيات: ' + selStr + ' — تسخين ' + requiredCloses() + ' شمعة (~' + Math.ceil(requiredCloses() * CANDLE_SEC / 60) + ' دقيقة)'
+        + ' — مبلغ $' + CFG.stake + '، هدف $' + CFG.dailyProfitTarget + '، خسارة قصوى $' + CFG.dailyLossLimit
+        + '، صفقات ' + (CFG.maxTrades > 0 ? CFG.maxTrades : 'بلا حد'));
     };
     document.getElementById('muse-stop').onclick = stopBot;
   }
@@ -1157,6 +1561,13 @@
   // candles and call decide() without a live Pocket Option page.
   if (typeof window !== 'undefined') {
     window.__PocketDemoBotTest = {
+      decideOne: decideOne,
+      checkDailyLimits: checkDailyLimits,
+      setStrategies: function (arr) { CFG.strategies = arr.slice(); },
+      getStrategies: function () { return CFG.strategies.slice(); },
+      getConfig: function () { return { stake: CFG.stake, dailyProfitTarget: CFG.dailyProfitTarget, dailyLossLimit: CFG.dailyLossLimit, maxTrades: CFG.maxTrades, maxConsecutiveLosses: CFG.maxConsecutiveLosses, strategies: CFG.strategies.slice() }; },
+      setState: function (st) { if (st.tradesToday !== undefined) tradesToday = st.tradesToday; if (st.dailyProfit !== undefined) dailyProfit = st.dailyProfit; if (st.consecLosses !== undefined) consecLosses = st.consecLosses; },
+      getState: function () { return { tradesToday: tradesToday, dailyProfit: dailyProfit, consecLosses: consecLosses }; },
       setData: function (closesArr, candlesArr) {
         closes = closesArr.slice(); candles = candlesArr.slice();
         curCandle = closesArr.length ? { time: 0, o: closesArr[0], h: closesArr[0], l: closesArr[0], c: closesArr[closesArr.length - 1] } : null;
@@ -1169,14 +1580,19 @@
       recordCandidate: recordCandidate, updateDiagDisplay: updateDiagDisplay,
       getLastPrice: function () { return lastPrice; },
       getPriceSource: function () { return priceSource; },
-      yahooSymbolForAsset: yahooSymbolForAsset, parseYahooPrice: parseYahooPrice,
-      readAssetName: readAssetName, YAHOO_MAP: YAHOO_MAP,
+      extractWsPrice: extractWsPrice, readWsPrice: readWsPrice, readAssetName: readAssetName,
+      normWsSymbol: normWsSymbol, wsNum: wsNum, injectWsHook: injectWsHook,
+      getWsState: function () { return { hooked: wsHooked, hookAt: wsHookAt, messagesSeen: wsMessagesSeen, lastMsgAt: wsLastMsgAt, priceSeenAt: wsPriceSeenAt }; },
       setLastPrice: function (v) { lastPrice = v; lastPriceAt = Date.now(); },
       ema: ema, rsi: rsi, stoch: stoch, macdHist: macdHist, bollinger: bollinger,
       atr: atr, adx: adx, cci: cci, williamsR: williamsR, parabolicSAR: parabolicSAR,
       vwap: vwap, donchian: donchian, requiredCloses: requiredCloses, modes: MODES
     };
   }
+
+  // ثبّت خطاف WebSocket فور بدء السكربت (document-start)، قبل أن
+  // تنشئ الصفحة سوكيتها، ثم ابنِ لوحة التحكم.
+  injectWsHook();
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildPanel);
   else buildPanel();
