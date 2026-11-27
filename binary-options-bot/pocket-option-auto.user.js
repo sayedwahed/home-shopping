@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.2.0
+// @version      1.2.1
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
@@ -172,6 +172,53 @@
   خطاف WebSocket)، بلا مصادر خارجية، بلا fetch خارجي،
   الأوضاع، الفلاتر القابلة للتبديل، ديمو فقط، بلا SSID/API/كوكيز.
 
+  ============================================================
+  v1.2.1 — خطاف WebSocket كان يسمع الرسائل لكنه لا يعرف الزوج
+  ============================================================
+  الدليل من لقطة المستخدم (v1.2.0، الساعة 10:55):
+  اللوحة تعمل، وإعدادات المستخدم محفوظة (مبلغ $11، هدف $1020،
+  خسارة قصوى $105، إيقاف بعد 35 خسارة متتالية، استراتيجيات
+  confluence + ema_cross_fast + rsi_scalp، صفقات بلا حد)،
+  والتشخيص يقول "WebSocket: مثبّت، رسائل: 36، بلا سعر بعد"،
+  والسجل يقول "فحص 28 رسالة لكن مفيش فيها سعر الزوج الحالي (؟)".
+  إذن الخطاف مثبّت والرسائل تتدفق، لكن readAssetName() كان يقرأ
+  اسم الزوج من body.innerText فقط — والتشخيص نفسه قال "أرقام
+  عشرية: 0"، أي أن innerText كان بلا نص في تلك اللحظة — فعاد
+  اسم الزوج فارغاً، ولم يستطع الخطاف مطابقة أي سعر.
+  الإصلاح في v1.2.1:
+  - readAssetName() يجرّب الآن مصادر كثيرة بالترتيب: عنوان
+    الصفحة، زر اختيار الزوج، عناصر asset/symbol/pair، meta،
+    نص الصفحة، ثم الرابط. وإن لم يجد شيئاً يعيد المحاولة بعد
+    5 ثوانٍ فقط (بدل 60)، ويسجّل اسم الزوج عند تغيّره.
+  - استخراج السعر من رسائل WebSocket لم يعد يشترط معرفة الزوج:
+    إن كان الزوج مجهولاً، يُقبل أول رقم سعر محتمل (3-5 خانات
+    عشرية، 0.1-200) — فيرفض الرصيد والمبلغ والعائد — سواء كان
+    في حقل سعر، أو تحت مفتاح يحمل اسم زوج (مثل {"AUDCAD":...})،
+    أو نصاً رقمياً عارياً. كما تُزال أغلفة Socket.IO "42[...]"
+    و SockJS "a[...]" قبل فك JSON، وتُقرأ الإطارات الثنائية
+    (ArrayBuffer/Blob) بعد فك ترميزها.
+  - عينة تشخيص جديدة: الخطاف يسجّل أول 3 أشكال رسائل مختلفة
+    (قائمة مفاتيح فقط، بلا قيم) وأول سعر محتمل في كل منها،
+    وتظهر في اللوحة تحت التشخيص، حتى نرى من اللقطة شكل رسائل
+    المنصة الحقيقي. الرسائل التي تحوي مفاتيح حساسة (token /
+    ssid / session / auth...) لا تُسجَّل مفاتيحها ولا قيمها أبداً.
+  - تحذير الـ 60 ثانية يعرض الآن اسم الزوج الذي جرّبه (أو
+    "غير معروف") وعدد الرسائل المفحوصة وعينة المفاتيح.
+  إصلاحات إضافية في نفس النسخة (بطلب المستخدم):
+  - حقول الإدخال كانت بيضاء والنص أبيض فلا يظهر: الآن كل
+    حقول الإدخال والقوائم والأزرار في اللوحة لها قاعدة CSS
+    صريحة (خلفية بيضاء، نص أسود، حد 1px #888، خط 14px،
+    حشوة 4px)، واللوحة نفسها تبقى داكنة (#222) بنص أبيض.
+  - حفظ الإعدادات: كل إعدادات اللوحة (المبالغ والحدود والوضع
+    والاستراتيجيات والفلاتر) تُحفظ في localStorage تحت مفتاح
+    'muse-pocket-bot-settings-v1' عند كل تغيير، وتُستعاد عند
+    إعادة فتح الصفحة/المتصفح، مع سجل "تم تحميل الإعدادات
+    المحفوظة". التداول لا يبدأ تلقائياً أبداً بعد إعادة
+    التحميل — يجب الضغط على START في كل مرة، للأمان.
+  كل شيء آخر بلا تغيير (لوحة v1.2.0، استراتيجيات متعددة،
+  حدود يكتبها المستخدم، السعر من الصفحة فقط، بلا مصادر
+  خارجية، بلا fetch، ديمو فقط، بلا SSID/API/كوكيز).
+
   ديمو فقط — أتمتة الواجهة مخالفة لشروط Pocket Option وقد
   تؤدي لحظر الحساب حتى على الديمو. للتعلم والتجربة على
   الديمو فقط، وبمبالغ صغيرة جداً. مفيش أي ضمان ربح.
@@ -241,6 +288,9 @@
   // وقت آخر سعر استخرجه الخطاف. wsNoPriceWarnAt: وقت آخر تحذير سُجّل.
   var wsHooked = false, wsHookAt = 0, wsMessagesSeen = 0, wsLastMsgAt = 0;
   var wsPriceSeenAt = 0, wsNoPriceWarnAt = 0;
+  // v1.2.1: عينات أشكال رسائل WebSocket (مفاتيح فقط، بلا قيم) واسم
+  // الزوج كما رآه الخطاف داخل الصفحة — للتشخيص في اللوحة.
+  var wsDiagSamples = [], wsHookAsset = '';
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -802,6 +852,28 @@
       + (priceSource === 'ws' ? ' | المصدر: WebSocket المنصة' : priceSource === 'dom' ? ' | المصدر: الصفحة' : '')
       + ' | WebSocket: ' + (wsHooked ? ('مثبّت، رسائل: ' + wsMessagesSeen + (wsPriceSeenAt ? '، آخر سعر: منذ ' + Math.floor((Date.now() - wsPriceSeenAt) / 1000) + ' ث' : '، بلا سعر بعد')) : 'غير مثبّت');
     diagDisplayAt = Date.now();
+    updateWsDiagDisplay();
+  }
+  // v1.2.1: عرض عينات أشكال رسائل WebSocket (مفاتيح فقط، بلا قيم)
+  // في سطرين كحد أقصى تحت التشخيص، حتى يرسل المستخدم لقطة ونرى
+  // شكل رسائل المنصة الحقيقي. الرسائل الحساسة تُعرض كعلامة فقط.
+  function updateWsDiagDisplay() {
+    var el = document.getElementById('muse-bot-wsdiag');
+    if (!el) return;
+    if (!wsHooked) { el.textContent = '📡 WebSocket: غير مثبّت'; return; }
+    var lines = '📡 WebSocket: مثبّت، رسائل: ' + wsMessagesSeen;
+    if (wsHookAsset) lines += '، الزوج: ' + wsHookAsset;
+    if (wsDiagSamples && wsDiagSamples.length) {
+      lines += ' | عينات رسائل (مفاتيح فقط):';
+      for (var i = 0; i < Math.min(2, wsDiagSamples.length); i++) {
+        var s = wsDiagSamples[i];
+        lines += '\n' + (i + 1) + ') ' + (s.sensitive ? '(رسالة حساسة — مفاتيحها مخفية)' : (s.keys && s.keys.length ? s.keys.join('، ') : 'بلا مفاتيح'))
+          + (s.price !== null && s.price !== undefined ? ' — سعر: ' + s.price : ' — بلا سعر');
+      }
+    } else {
+      lines += ' — بلا عينة بعد';
+    }
+    el.textContent = lines;
   }
   function logDiagCandidates(force) {
     // سجّل المرشحات في سجل اللوحة مرة عند أول فحص، ثم كل 60 ثانية كحد أقصى
@@ -1029,22 +1101,85 @@
     if (wsMessagesSeen === 0) {
       logLine('⚠️ خطاف WebSocket مثبّت لكن مفيش أي رسائل وصلت من سوكيت الصفحة منذ 60 ثانية — السوكيت ممكن يكون اتفتح قبل الحقن، جرّب إعادة تحميل الصفحة');
     } else {
-      logLine('⚠️ خطاف WebSocket فحص ' + wsMessagesSeen + ' رسالة من سوكيت الصفحة لكن مفيش فيها سعر الزوج الحالي (' + (readAssetName() || '؟') + ') منذ 60 ثانية — مستمر في المحاولة');
+      // v1.2.1: اعرض اسم الزوج الذي جُرّب (أو "غير معروف") وعدد
+      // الرسائل وعينة مفاتيح آخر رسالة، حتى نعرف من اللقطة لماذا
+      // لم يُستخرج سعر رغم تدفق الرسائل.
+      var triedAsset = readAssetName() || wsHookAsset || 'غير معروف';
+      var sampleTxt = '';
+      if (wsDiagSamples && wsDiagSamples.length) {
+        var s0 = wsDiagSamples[0];
+        sampleTxt = ' — عينة مفاتيح: ' + (s0.sensitive ? '(رسالة حساسة — مخفية)' : (s0.keys && s0.keys.length ? s0.keys.join('، ') : 'بلا مفاتيح'));
+      }
+      logLine('⚠️ خطاف WebSocket فحص ' + wsMessagesSeen + ' رسالة من سوكيت الصفحة لكن مفيش فيها سعر الزوج الحالي (' + triedAsset + ') منذ 60 ثانية' + sampleTxt + ' — مستمر في المحاولة');
     }
   }
   // ---------- قراءة اسم الزوج الحالي من الصفحة (لخطاف WebSocket) ----------
-  // مثلاً "AUD/CAD OTC" -> "AUD/CAD". قراءة من نص الصفحة فقط،
-  // مع تخزين مؤقت 60 ثانية حتى لا نمسح innerText كل ثانية.
+  // مثلاً "AUD/CAD OTC" -> "AUD/CAD".
+  // v1.2.1: في v1.2.0 كان يقرأ فقط من body.innerText بصيغة XXX/YYY.
+  // لكن في لقطة المستخدم (10:55) التشخيص قال "أرقام عشرية: 0" —
+  // أي أن innerText كان بلا نص في تلك اللحظة — فعاد اسم الزوج
+  // فارغاً ("؟")، ولم يستطع الخطاف مطابقة أي سعر، رغم أن 36-40
+  // رسالة كانت تتدفق. الآن يجرّب مصادر كثيرة بالترتيب، ويُعيد
+  // المحاولة بعد 5 ثوانٍ فقط إن لم يجد شيئاً (بدل 60 ثانية)،
+  // ويسجّل اسم الزوج مرة واحدة عند تغيّره.
+  var KNOWN_PAIRS = ['AUDCAD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'EURJPY', 'GBPJPY', 'USDCAD', 'NZDUSD', 'USDCHF', 'EURGBP', 'AUDJPY', 'EURAUD', 'GBPAUD', 'NZDJPY', 'AUDNZD', 'EURCAD', 'GBPCAD', 'EURCHF', 'GBPCHF', 'USDMXN', 'USDZAR', 'USDTRY', 'EURNZD', 'GBPNZD', 'CADJPY', 'CHFJPY', 'BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD', 'SOLUSD', 'DOGEUSD', 'XAUUSD', 'XAGUSD'];
+  var assetLogged = '';
+  function pairFromText(txt) {
+    if (!txt) return '';
+    var m = String(txt).match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
+    if (m) return m[1] + '/' + m[2];
+    var m2 = String(txt).match(/\b([A-Z]{3})-([A-Z]{3})\b/);
+    if (m2) return m2[1] + '/' + m2[2];
+    return '';
+  }
   function readAssetName() {
     var now = Date.now();
+    // وُجد من قبل: احتفظ به 60 ثانية. لم يُوجد: أعد المحاولة بعد 5 ثوانٍ فقط.
     if (currentAsset && now - currentAssetAt < 60000) return currentAsset;
+    if (!currentAsset && currentAssetAt && now - currentAssetAt < 5000) return '';
+    var found = '';
     try {
-      var txt = (document.body && (document.body.innerText || document.body.textContent)) || '';
-      var m = txt.match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
-      if (m) { currentAsset = m[1] + '/' + m[2]; currentAssetAt = now; return currentAsset; }
+      // 1) عنوان الصفحة (مثلاً "AUD/CAD OTC | Pocket Option")
+      found = pairFromText(document.title || '');
+      // 2) زر اختيار الزوج / عناصر تحمل كلاس asset/symbol/pair
+      if (!found) {
+        var btns = document.querySelectorAll('button, [role="button"], a, [class*="asset"], [class*="symbol"], [class*="pair"]');
+        for (var i = 0; i < btns.length && i < 300; i++) {
+          var t = (btns[i].textContent || '').trim();
+          if (t && t.length < 40) { found = pairFromText(t); if (found) break; }
+        }
+      }
+      // 3) meta (og:title / description / title)
+      if (!found) {
+        var metas = document.querySelectorAll('meta[property="og:title"], meta[name="description"], meta[name="title"]');
+        for (var mi = 0; mi < metas.length; mi++) {
+          found = pairFromText(metas[mi].getAttribute('content') || '');
+          if (found) break;
+        }
+      }
+      // 4) نص الصفحة كاملاً (الطريقة القديمة)
+      if (!found) {
+        var txt = (document.body && (document.body.innerText || document.body.textContent)) || '';
+        found = pairFromText(txt);
+      }
+      // 5) الرابط: ?asset=AUDCAD أو /AUDCAD أو /aud-cad
+      if (!found && typeof location !== 'undefined' && location) {
+        var href = location.href || '';
+        var um = href.match(/(?:asset|pair|symbol)[=\/]([A-Za-z]{3})[-_\/]?([A-Za-z]{3})/);
+        if (um) found = um[1].toUpperCase() + '/' + um[2].toUpperCase();
+        if (!found) {
+          var p6 = href.match(/([A-Za-z]{6})(?:[?&#\/]|$)/);
+          if (p6 && KNOWN_PAIRS.indexOf(p6[1].toUpperCase()) !== -1) {
+            var p = p6[1].toUpperCase();
+            found = p.slice(0, 3) + '/' + p.slice(3);
+          }
+        }
+      }
     } catch (e) { /* تجاهل */ }
-    currentAsset = ''; currentAssetAt = now;
-    return '';
+    currentAsset = found || '';
+    currentAssetAt = now;
+    if (found && found !== assetLogged) { assetLogged = found; logLine('الزوج الحالي: ' + found); }
+    return currentAsset;
   }
   function assetNorm6() {
     var a = readAssetName();
@@ -1057,7 +1192,16 @@
   // ترجع {price, asset} أو null. تتعامل مع أشكال الرسائل الشائعة:
   // {"symbol":"AUDCAD","price":1.00264}، {"data":{"AUDCAD":1.00264}}،
   // {"quotes":[{"symbol":"AUDCAD","close":1.00264}]}، ["quote", {...}].
-  var WS_PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price'];
+  var WS_PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price', 'open', 'current', 'spot', 'mid'];
+  // v1.2.1: مفاتيح حساسة — لا تُسجَّل قيمها أبداً في التشخيص أو السجل.
+  var WS_SENSITIVE_KEYS = ['token', 'ssid', 'session', 'auth', 'password', 'passwd', 'cookie', 'secret', 'apikey', 'api_key', 'access_token', 'refresh_token', 'authorization'];
+  function isSensitiveKey(k) {
+    var lk = String(k).toLowerCase().replace(/[^a-z0-9_]/g, '');
+    for (var i = 0; i < WS_SENSITIVE_KEYS.length; i++) {
+      if (lk === WS_SENSITIVE_KEYS[i] || lk.indexOf(WS_SENSITIVE_KEYS[i]) !== -1) return true;
+    }
+    return false;
+  }
   function normWsSymbol(s) {
     if (!s) return '';
     return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, '');
@@ -1070,6 +1214,72 @@
     }
     return null;
   }
+  // v1.2.1: هل الرقم سعر محتمل؟ (3-5 خانات عشرية، 0.1-200)
+  // يرفض الرصيد (152280 بلا كسور) والمبلغ (1) والعائد (0.92 بخانتين).
+  function wsPlausiblePrice(v) {
+    var n = wsNum(v);
+    if (n === null || n < 0.1 || n > 200) return null;
+    var dec = priceDecimals(n);
+    if (dec < 3 || dec > 5) return null;
+    return n;
+  }
+  // v1.2.1: أزل أغلفة بروتوكولات النقل قبل فك JSON:
+  // Socket.IO "42[...]" و SockJS "a[...]" و Engine.IO "2"/"3".
+  // رقم عادي مثل "1.00264" لا يبدأ بـ [ أو { فلا يُمس.
+  function normalizeWsText(t) {
+    var s = String(t).trim();
+    var m = s.match(/^(\d+|a)([\[{][\s\S]*)$/);
+    if (m) return m[2];
+    return s;
+  }
+  // v1.2.1: قائمة مفاتيح رسالة (مفاتيح فقط، بلا قيم) — للتشخيص.
+  // ترجع {keys, sensitive}: إن وُجد مفتاح حساس، لا تُسجَّل المفاتيح
+  // إطلاقاً، ويُعاد sensitive=true فقط.
+  function wsKeysOf(data, depth) {
+    depth = depth || 0;
+    var out = { keys: [], sensitive: false };
+    if (typeof data === 'string') {
+      var t = normalizeWsText(data);
+      if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
+        try { return wsKeysOf(JSON.parse(t), depth + 1); } catch (e) { return out; }
+      }
+      return out;
+    }
+    if (Array.isArray(data)) {
+      for (var i = 0; i < data.length && i < 5; i++) {
+        var sub = wsKeysOf(data[i], depth + 1);
+        if (sub.sensitive) out.sensitive = true;
+        for (var j = 0; j < sub.keys.length; j++) if (out.keys.indexOf(sub.keys[j]) === -1) out.keys.push(sub.keys[j]);
+      }
+      return out;
+    }
+    if (!data || typeof data !== 'object') return out;
+    var keys = Object.keys(data);
+    for (var k = 0; k < keys.length; k++) {
+      if (isSensitiveKey(keys[k])) { out.sensitive = true; continue; }
+      if (out.keys.indexOf(keys[k]) === -1) out.keys.push(keys[k]);
+    }
+    if (depth < 1) {
+      for (var n = 0; n < keys.length; n++) {
+        var child = data[keys[n]];
+        if (child && typeof child === 'object') {
+          var c = wsKeysOf(child, depth + 1);
+          if (c.sensitive) out.sensitive = true;
+          for (var m = 0; m < c.keys.length; m++) if (out.keys.indexOf(c.keys[m]) === -1) out.keys.push(c.keys[m]);
+        }
+      }
+    }
+    if (out.sensitive) out.keys = [];
+    return out;
+  }
+  // v1.2.1: عينة رسالة للتشخيص — {keys, sensitive, price} أو null.
+  // السعر هنا أول رقم سعر محتمل فيها (أو null)، والمفاتيح فقط.
+  function wsSampleOf(data) {
+    var k = wsKeysOf(data, 0);
+    var p = null;
+    try { var r = extractWsPrice(data, ''); if (r) p = r.price; } catch (e) {}
+    return { keys: k.keys, sensitive: k.sensitive, price: p };
+  }
   function extractWsPrice(data, asset6) {
     var target = normWsSymbol(asset6 || '');
     var found = null;
@@ -1077,7 +1287,9 @@
       for (var i = 0; i < WS_PRICE_KEYS.length; i++) {
         var k = WS_PRICE_KEYS[i];
         if (obj[k] !== undefined) {
-          var p = wsNum(obj[k]);
+          // الزوج معروف: أي رقم سعر مقبول. الزوج غير معروف: فقط
+          // سعر محتمل (3-5 خانات عشرية) حتى لا نلتقط عائداً أو مبلغاً.
+          var p = target ? wsNum(obj[k]) : wsPlausiblePrice(obj[k]);
           if (p !== null) return { price: p, asset: sym || target };
         }
       }
@@ -1086,7 +1298,12 @@
     function walk(node, ctxSym, depth) {
       if (found || depth > 6) return;
       if (typeof node === 'string') {
-        var t = node.trim();
+        var t = normalizeWsText(node);
+        // نص رقمي عارٍ: "1.00264" — سعر محتمل إذا كان الزوج مجهولاً
+        if (!target) {
+          var bare = wsPlausiblePrice(t);
+          if (bare !== null) { found = { price: bare, asset: '' }; return; }
+        }
         if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
           try { walk(JSON.parse(t), ctxSym, depth + 1); } catch (e) { /* ليست JSON */ }
         }
@@ -1102,17 +1319,24 @@
       for (var s = 0; s < sk.length; s++) {
         if (typeof node[sk[s]] === 'string') { sym = normWsSymbol(node[sk[s]]) || sym; break; }
       }
-      // مفتاح يحمل اسم الزوج مباشرة: {"AUDCAD": 1.00264}
-      var keys = Object.keys(node);
-      for (var k = 0; k < keys.length; k++) {
-        if (target && normWsSymbol(keys[k]) === target) {
-          var pv = wsNum(node[keys[k]]);
+      var keys = Object.keys(node), k, pv;
+      // مفتاح يحمل اسم الزوج مباشرة: {"AUDCAD": 1.00264} أو
+      // {"quotes": {"AUDCAD": 1.00264}} — إن كان الزوج مجهولاً،
+      // اقبل أي مفتاح من 6 حروف لاتينية مع سعر محتمل (3-5 خانات).
+      for (k = 0; k < keys.length; k++) {
+        var nk = normWsSymbol(keys[k]);
+        if (target && nk === target) {
+          pv = wsNum(node[keys[k]]);
           if (pv !== null) { found = { price: pv, asset: target }; return; }
+        } else if (!target && nk.length === 6) {
+          pv = wsPlausiblePrice(node[keys[k]]);
+          if (pv !== null) { found = { price: pv, asset: nk }; return; }
         }
       }
-      // كائن رمزه مطابق للزوج المطلوب (أو الرمز غير معروف أصلاً):
-      // ابحث عن حقل سعر فيه، ومرّر الرمز للأولاد (مثل data:{price}).
-      if (sym && (!target || sym === target)) {
+      // كائن له رمز (أو الزوج مجهول أصلاً): ابحث عن حقل سعر فيه.
+      // v1.2.1: عندما يكون الزوج مجهولاً، لا نشترط وجود رمز إطلاقاً —
+      // أي كائن فيه حقل سعر محتمل يُقبل (مثل {"data":{"price":1.00264}}).
+      if (!target || sym === target) {
         var r = priceFromObj(node, sym);
         if (r) { found = r; return; }
       }
@@ -1143,24 +1367,126 @@
   function wsHookPageFn() {
     try {
       var BRIDGE_ID = 'muse-po-price';
-      var PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price'];
+      var PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price', 'open', 'current', 'spot', 'mid'];
       function normSym(s) { try { return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, ''); } catch (e) { return ''; } }
       function numVal(v) {
         if (typeof v === 'number' && isFinite(v) && v > 0 && v < 200000) return v;
         if (typeof v === 'string') { var n = parseFloat(v.replace(/,/g, '')); if (isFinite(n) && n > 0 && n < 200000) return n; }
         return null;
       }
+      // v1.2.1: اسم الزوج من مصادر كثيرة (عنوان الصفحة، زر الزوج،
+      // نص الصفحة، الرابط)، مع تخزين مؤقت 5 ثوانٍ فقط إن لم يُوجد.
+      var KNOWN6 = ['AUDCAD', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'EURJPY', 'GBPJPY', 'USDCAD', 'NZDUSD', 'USDCHF', 'EURGBP', 'AUDJPY', 'EURAUD', 'GBPAUD', 'NZDJPY', 'AUDNZD', 'EURCAD', 'GBPCAD', 'EURCHF', 'GBPCHF', 'BTCUSD', 'ETHUSD', 'XAUUSD', 'XAGUSD'];
+      var assetCache = '', assetCacheAt = 0;
+      function pairFromText(t) {
+        if (!t) return '';
+        var m = String(t).match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
+        if (m) return m[1] + m[2];
+        var m2 = String(t).match(/\b([A-Z]{3})-([A-Z]{3})\b/);
+        if (m2) return m2[1] + m2[2];
+        return '';
+      }
       function assetNow() {
         try {
-          var t = (document.body && (document.body.innerText || document.body.textContent)) || '';
-          var m = t.match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
-          return m ? m[1] + m[2] : '';
+          var now = Date.now();
+          if (assetCache && now - assetCacheAt < 60000) return assetCache;
+          if (!assetCache && assetCacheAt && now - assetCacheAt < 5000) return '';
+          var found = pairFromText(document.title || '');
+          if (!found) {
+            var btns = document.querySelectorAll('button, [role="button"], a, [class*="asset"], [class*="symbol"], [class*="pair"]');
+            for (var i = 0; i < btns.length && i < 300; i++) {
+              var bt = (btns[i].textContent || '').trim();
+              if (bt && bt.length < 40) { found = pairFromText(bt); if (found) break; }
+            }
+          }
+          if (!found) {
+            var txt = (document.body && (document.body.innerText || document.body.textContent)) || '';
+            found = pairFromText(txt);
+          }
+          if (!found && typeof location !== 'undefined' && location) {
+            var href = location.href || '';
+            var um = href.match(/(?:asset|pair|symbol)[=\/]([A-Za-z]{3})[-_\/]?([A-Za-z]{3})/);
+            if (um) found = um[1].toUpperCase() + um[2].toUpperCase();
+            if (!found) {
+              var p6 = href.match(/([A-Za-z]{6})(?:[?&#\/]|$)/);
+              if (p6 && KNOWN6.indexOf(p6[1].toUpperCase()) !== -1) found = p6[1].toUpperCase();
+            }
+          }
+          assetCache = found || '';
+          assetCacheAt = now;
+          return assetCache;
         } catch (e) { return ''; }
+      }
+      // v1.2.1: نسخة مستقلة من منطق الاستخراج داخل سياق الصفحة.
+      // مثل extractWsPrice في السكربت: تُزال أغلفة Socket.IO/SockJS،
+      // وإن كان الزوج مجهولاً يُقبل أول رقم سعر محتمل (3-5 خانات
+      // عشرية، 0.1-200) — فيرفض الرصيد والمبلغ والعائد — سواء كان
+      // في حقل سعر، أو تحت مفتاح زوج، أو نصاً رقمياً عارياً.
+      var SENS_KEYS = ['token', 'ssid', 'session', 'auth', 'password', 'passwd', 'cookie', 'secret', 'apikey', 'api_key', 'access_token', 'refresh_token', 'authorization'];
+      function isSens(k) {
+        var lk = String(k).toLowerCase().replace(/[^a-z0-9_]/g, '');
+        for (var i = 0; i < SENS_KEYS.length; i++) { if (lk === SENS_KEYS[i] || lk.indexOf(SENS_KEYS[i]) !== -1) return true; }
+        return false;
+      }
+      function decOf(v) { var s = String(v); return s.indexOf('.') === -1 ? 0 : s.split('.')[1].length; }
+      function plausible(v) {
+        var n = numVal(v);
+        if (n === null || n < 0.1 || n > 200) return null;
+        var d = decOf(n);
+        if (d < 3 || d > 5) return null;
+        return n;
+      }
+      function stripPrefix(t) {
+        var s = String(t).trim();
+        var m = s.match(/^(\d+|a)([\[{][\s\S]*)$/);
+        if (m) return m[2];
+        return s;
+      }
+      function keysOf(data, depth) {
+        depth = depth || 0;
+        var out = { keys: [], sensitive: false };
+        if (typeof data === 'string') {
+          var t = stripPrefix(data);
+          if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
+            try { return keysOf(JSON.parse(t), depth + 1); } catch (e) { return out; }
+          }
+          return out;
+        }
+        if (Array.isArray(data)) {
+          for (var i = 0; i < data.length && i < 5; i++) {
+            var sub = keysOf(data[i], depth + 1);
+            if (sub.sensitive) out.sensitive = true;
+            for (var j = 0; j < sub.keys.length; j++) if (out.keys.indexOf(sub.keys[j]) === -1) out.keys.push(sub.keys[j]);
+          }
+          return out;
+        }
+        if (!data || typeof data !== 'object') return out;
+        var keys = Object.keys(data);
+        for (var k = 0; k < keys.length; k++) {
+          if (isSens(keys[k])) { out.sensitive = true; continue; }
+          if (out.keys.indexOf(keys[k]) === -1) out.keys.push(keys[k]);
+        }
+        if (depth < 1) {
+          for (var n = 0; n < keys.length; n++) {
+            var child = data[keys[n]];
+            if (child && typeof child === 'object') {
+              var c = keysOf(child, depth + 1);
+              if (c.sensitive) out.sensitive = true;
+              for (var q = 0; q < c.keys.length; q++) if (out.keys.indexOf(c.keys[q]) === -1) out.keys.push(c.keys[q]);
+            }
+          }
+        }
+        if (out.sensitive) out.keys = [];
+        return out;
       }
       function extract(data, target, depth, ctxSym) {
         if (depth > 6) return null;
         if (typeof data === 'string') {
-          var t = data.trim();
+          var t = stripPrefix(data);
+          if (!target) {
+            var bare = plausible(t);
+            if (bare !== null) return { price: bare, asset: '' };
+          }
           if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
             try { return extract(JSON.parse(t), target, depth + 1, ctxSym); } catch (e) { return null; }
           }
@@ -1176,15 +1502,19 @@
         for (var s = 0; s < sk.length; s++) { if (typeof data[sk[s]] === 'string') { sym = normSym(data[sk[s]]) || sym; break; } }
         var keys = Object.keys(data), k, j;
         for (k = 0; k < keys.length; k++) {
-          if (target && normSym(keys[k]) === target) {
+          var nk = normSym(keys[k]);
+          if (target && nk === target) {
             var pv = numVal(data[keys[k]]);
             if (pv !== null) return { price: pv, asset: target };
+          } else if (!target && nk.length === 6) {
+            var pv2 = plausible(data[keys[k]]);
+            if (pv2 !== null) return { price: pv2, asset: nk };
           }
         }
-        if (sym && (!target || sym === target)) {
+        if (!target || sym === target) {
           for (var p = 0; p < PRICE_KEYS.length; p++) {
             if (data[PRICE_KEYS[p]] !== undefined) {
-              var q = numVal(data[PRICE_KEYS[p]]);
+              var q = target ? numVal(data[PRICE_KEYS[p]]) : plausible(data[PRICE_KEYS[p]]);
               if (q !== null) return { price: q, asset: sym };
             }
           }
@@ -1196,6 +1526,28 @@
         return null;
       }
       var seen = 0;
+      // v1.2.1: عينات أشكال الرسائل (مفاتيح فقط، بلا قيم) — أول 3
+      // أشكال مختلفة — تُنشر في الجسر data-sample ليقرأها السكربت
+      // ويعرضها في اللوحة. الرسائل الحساسة تُسجَّل كعلامة فقط.
+      var samples = [];
+      function recordSample(raw) {
+        try {
+          if (samples.length >= 3) return;
+          var k = keysOf(raw, 0);
+          var keyStr = k.sensitive ? 'SENSITIVE' : k.keys.join(',');
+          for (var i = 0; i < samples.length; i++) {
+            if ((samples[i].sensitive ? 'SENSITIVE' : samples[i].keys.join(',')) === keyStr) return;
+          }
+          var pr = null;
+          try { var rr = extract(raw, '', 0, ''); if (rr) pr = rr.price; } catch (e) {}
+          samples.push({ keys: k.keys, sensitive: k.sensitive, price: pr });
+          var b = document.getElementById(BRIDGE_ID);
+          if (b) {
+            try { b.setAttribute('data-sample', JSON.stringify(samples)); } catch (e) {}
+            try { b.setAttribute('data-ws-asset', assetNow()); } catch (e) {}
+          }
+        } catch (e) {}
+      }
       function publish(price, asset) {
         try {
           window.__poPrice = { price: price, asset: asset || '', time: Date.now(), source: 'websocket' };
@@ -1205,16 +1557,38 @@
             b.setAttribute('data-asset', asset || '');
             b.setAttribute('data-time', String(Date.now()));
             b.setAttribute('data-msgs', String(seen));
+            try { b.setAttribute('data-ws-asset', assetNow()); } catch (e) {}
           }
         } catch (e) {}
       }
-      function inspect(raw) {
+      // v1.2.1: handleText هو الفحص الفعلي (يُعدّ الرسالة مرة واحدة).
+      // inspect يفك ترميز الإطارات الثنائية أولاً (ArrayBuffer/Blob)
+      // ثم يمرر النص لـ handleText — فلا تُحسب الرسالة مرتين.
+      function handleText(raw) {
         try {
           seen++;
           var b = document.getElementById(BRIDGE_ID);
           if (b) b.setAttribute('data-msgs', String(seen));
+          recordSample(raw);
           var r = extract(raw, assetNow(), 0, '');
           if (r) publish(r.price, r.asset);
+        } catch (e) {}
+      }
+      function inspect(raw) {
+        try {
+          if (typeof ArrayBuffer !== 'undefined' && raw instanceof ArrayBuffer) {
+            try { handleText(new TextDecoder('utf-8').decode(raw)); } catch (e) {}
+            return;
+          }
+          if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+            try {
+              var fr = new FileReader();
+              fr.onload = function () { try { handleText(fr.result); } catch (e) {} };
+              fr.readAsText(raw);
+            } catch (e) {}
+            return;
+          }
+          handleText(raw);
         } catch (e) {}
       }
       // (2) غلّف addEventListener: مستمعو 'message' الجدد يُغلَّفون.
@@ -1291,13 +1665,24 @@
       logLine('🔌 خطاف WebSocket مثبّت — بيستمع لرسائل سوكيت المنصة نفسها');
     } catch (e) { /* الحقن فشل: نكمل بقراءة DOM فقط */ }
   }
-  // مزامنة عدّاد رسائل الخطاف إلى متغيرات التشخيص (كل ثانية).
+  // مزامنة عدّاد رسائل الخطاف وعينات أشكال الرسائل إلى متغيرات
+  // التشخيص (كل ثانية). v1.2.1: تقرأ أيضاً data-sample (قائمة
+  // مفاتيح فقط، بلا قيم) و data-ws-asset من الجسر.
   function syncWsDiag() {
     try {
       var b = document.getElementById('muse-po-price');
       if (!b) return;
       var msgs = parseInt(b.getAttribute('data-msgs') || '0', 10);
       if (!isNaN(msgs) && msgs > wsMessagesSeen) { wsMessagesSeen = msgs; wsLastMsgAt = Date.now(); }
+      var wa = b.getAttribute('data-ws-asset') || '';
+      if (wa) wsHookAsset = wa;
+      var smp = b.getAttribute('data-sample') || '';
+      if (smp) {
+        try {
+          var parsed = JSON.parse(smp);
+          if (Array.isArray(parsed)) wsDiagSamples = parsed;
+        } catch (e) { /* تجاهل */ }
+      }
     } catch (e) { /* تجاهل */ }
   }
   // اقرأ سعر WebSocket من الجسر (أو window.__poPrice إن كان في نفس
@@ -1441,12 +1826,66 @@
     'confluence', 'trend_ema_rsi', 'reversal_rsi_stoch', 'pullback', 'alligator_rsi',
     'bollinger_bounce', 'macd_cross', 'stoch_cross', 'ema_cross_fast', 'breakout_donchian', 'rsi_scalp'
   ];
+  // ---------- حفظ الإعدادات في localStorage (v1.2.1) ----------
+  // تُحفظ إعدادات اللوحة (المبالغ والحدود والوضع والاستراتيجيات
+  // والفلاتر) تحت مفتاح 'muse-pocket-bot-settings-v1'، وتُستعاد
+  // عند إعادة فتح الصفحة/المتصفح. لا يبدأ التداول تلقائياً أبداً
+  // بعد إعادة التحميل — يجب أن يضغط المستخدم START بنفسه كل مرة.
+  // ملاحظة: السكربت نفسه لا يعمل إلا والتبويب مفتوح — هذا طبيعي
+  // لأي userscript — لكن الإعدادات لم تعد تضيع عند إغلاق Firefox.
+  var SETTINGS_KEY = 'muse-pocket-bot-settings-v1';
+  function saveSettings() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return;
+      var data = {
+        stake: CFG.stake, dailyProfitTarget: CFG.dailyProfitTarget,
+        dailyLossLimit: CFG.dailyLossLimit, maxTrades: CFG.maxTrades,
+        maxConsecutiveLosses: CFG.maxConsecutiveLosses, minPayout: CFG.minPayout,
+        mode: CFG.mode, strategies: CFG.strategies.slice(), filters: {
+          adx: !!CFG.filters.adx, atr: !!CFG.filters.atr, payout: !!CFG.filters.payout,
+          chop: !!CFG.filters.chop, session: !!CFG.filters.session
+        }
+      };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+    } catch (e) { /* التخزين غير متاح: تجاهل بصمت */ }
+  }
+  function loadSettings() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return false;
+      var raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (!d || typeof d !== 'object') return false;
+      function num(v, def, min) {
+        var n = parseFloat(v);
+        return (isFinite(n) && n >= min) ? n : def;
+      }
+      CFG.stake = num(d.stake, CFG.stake, 0.1);
+      CFG.dailyProfitTarget = num(d.dailyProfitTarget, CFG.dailyProfitTarget, 0);
+      CFG.dailyLossLimit = num(d.dailyLossLimit, CFG.dailyLossLimit, 0);
+      CFG.maxTrades = num(d.maxTrades, CFG.maxTrades, 0);
+      CFG.maxConsecutiveLosses = num(d.maxConsecutiveLosses, CFG.maxConsecutiveLosses, 1);
+      CFG.minPayout = num(d.minPayout, CFG.minPayout, 0.5);
+      if (d.mode && MODES[d.mode]) CFG.mode = d.mode;
+      if (Array.isArray(d.strategies)) {
+        var sel = d.strategies.filter(function (s) { return STRATEGIES.indexOf(s) !== -1; });
+        if (sel.length) { CFG.strategies = sel; CFG.strategy = sel[0]; }
+      }
+      if (d.filters && typeof d.filters === 'object') {
+        for (var k in CFG.filters) if (typeof d.filters[k] === 'boolean') CFG.filters[k] = d.filters[k];
+      }
+      return true;
+    } catch (e) { return false; }
+  }
   function buildPanel() {
+    // v1.2.1: استعد الإعدادات المحفوظة أولاً، حتى تُبنى اللوحة بقيمها.
+    var settingsRestored = loadSettings();
     var p = document.createElement('div');
     p.id = 'muse-bot-panel';
     p.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:999999;background:#222;color:#fff;'
       + 'padding:12px;border-radius:10px;font-size:13px;width:250px;max-height:85vh;overflow:auto;box-shadow:0 0 12px #000;';
-    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.2.0</b><br>'
+    p.innerHTML = '<style>#muse-bot-panel input, #muse-bot-panel select, #muse-bot-panel button { background:#ffffff !important; color:#000000 !important; border:1px solid #888 !important; font-size:14px !important; padding:4px !important; } #muse-bot-panel label { color:#ffffff !important; }</style>'
+      + '<b>🤖 Pocket Demo Bot v1.2.1</b><br>'
       + '<span style="color:#f39c12">ديمو بس — أتمتة الواجهة مخالفة لشروط المنصة وقد تؤدي للحظر.</span><br>'
       + 'الوضع: <select id="muse-mode">'
       + Object.keys(MODES).map(function (k) {
@@ -1486,11 +1925,15 @@
       + '<div id="muse-bot-stats" style="margin-top:4px;font-size:12px;color:#2ecc71">صفقات اليوم: 0 | صافي اليوم: $0.00 | الهدف: $10.00 | المتبقي للهدف: $10.00 | خسائر متتالية: 0/3</div>'
       + '<div id="muse-bot-price" style="margin-top:4px;font-size:12px;color:#e74c3c">السعر: - | آخر قراءة: لم تُقرأ بعد</div>'
       + '<div id="muse-bot-diag" style="margin-top:4px;font-size:11px;color:#aaa;word-wrap:break-word">🔍 تشخيص السعر: جارٍ الفحص...</div>'
+      + '<div id="muse-bot-wsdiag" style="margin-top:4px;font-size:11px;color:#aaa;white-space:pre-wrap;word-wrap:break-word">📡 WebSocket: جارٍ الفحص...</div>'
       + '<pre id="muse-bot-log" style="max-height:140px;overflow:auto;font-size:11px;color:#aaa"></pre>';
     document.body.appendChild(p);
+    updateStatsDisplay();
+    if (settingsRestored) logLine('تم تحميل الإعدادات المحفوظة');
     document.getElementById('muse-mode').onchange = function (e) {
       CFG.mode = e.target.value;
       document.getElementById('muse-f-chop').checked = mode().chop && CFG.filters.chop;
+      saveSettings();
       logLine('الوضع: ' + MODES[CFG.mode].label + ' — تسخين ' + mode().need + ' شمعة، تبريد ' + mode().cooldownSec + ' ثانية');
     };
     // v1.2.0: خانات اختيار الاستراتيجيات — تُحدَّث CFG.strategies فوراً
@@ -1500,6 +1943,7 @@
       for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) sel.push(boxes[i].value);
       CFG.strategies = sel;
       CFG.strategy = sel.length ? sel[0] : 'confluence';
+      saveSettings();
       updateStatsDisplay();
       return sel;
     }
@@ -1528,6 +1972,7 @@
         var v = parseFloat(e.target.value);
         if (isNaN(v) || v < minVal) { v = minVal; e.target.value = v; }
         CFG[key] = v;
+        saveSettings();
         updateStatsDisplay();
         logLine(label + ': ' + v);
       };
@@ -1537,9 +1982,9 @@
     bindNum('muse-loss', 'dailyLossLimit', 'الخسارة اليومية القصوى', 0);
     bindNum('muse-maxtrades', 'maxTrades', 'أقصى عدد صفقات في اليوم', 0);
     bindNum('muse-consec', 'maxConsecutiveLosses', 'إيقاف بعد خسائر متتالية', 1);
-    document.getElementById('muse-payout').onchange = function (e) { CFG.minPayout = parseFloat(e.target.value); logLine('أقل عائد: ' + Math.round(CFG.minPayout * 100) + '%'); };
+    document.getElementById('muse-payout').onchange = function (e) { CFG.minPayout = parseFloat(e.target.value); saveSettings(); logLine('أقل عائد: ' + Math.round(CFG.minPayout * 100) + '%'); };
     function bindFilter(id, key) {
-      document.getElementById(id).onchange = function (e) { CFG.filters[key] = e.target.checked; logLine('فلتر ' + key + ': ' + (e.target.checked ? 'مفعّل' : 'مطفأ')); };
+      document.getElementById(id).onchange = function (e) { CFG.filters[key] = e.target.checked; saveSettings(); logLine('فلتر ' + key + ': ' + (e.target.checked ? 'مفعّل' : 'مطفأ')); };
     }
     bindFilter('muse-f-adx', 'adx'); bindFilter('muse-f-atr', 'atr'); bindFilter('muse-f-payout', 'payout');
     bindFilter('muse-f-chop', 'chop'); bindFilter('muse-f-session', 'session');
@@ -1581,6 +2026,11 @@
       getLastPrice: function () { return lastPrice; },
       getPriceSource: function () { return priceSource; },
       extractWsPrice: extractWsPrice, readWsPrice: readWsPrice, readAssetName: readAssetName,
+      clearAssetCache: function () { currentAsset = ''; currentAssetAt = 0; assetLogged = ''; },
+      normalizeWsText: normalizeWsText, wsKeysOf: wsKeysOf, wsSampleOf: wsSampleOf,
+      getWsDiag: function () { return { hooked: wsHooked, messagesSeen: wsMessagesSeen, asset: wsHookAsset, samples: wsDiagSamples.slice() }; },
+      saveSettings: saveSettings, loadSettings: loadSettings, buildPanel: buildPanel,
+      getSettingsKey: function () { return SETTINGS_KEY; },
       normWsSymbol: normWsSymbol, wsNum: wsNum, injectWsHook: injectWsHook,
       getWsState: function () { return { hooked: wsHooked, hookAt: wsHookAt, messagesSeen: wsMessagesSeen, lastMsgAt: wsLastMsgAt, priceSeenAt: wsPriceSeenAt }; },
       setLastPrice: function (v) { lastPrice = v; lastPriceAt = Date.now(); },
