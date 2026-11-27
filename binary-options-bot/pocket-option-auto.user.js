@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.2.3
+// @version      1.2.4
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
@@ -395,6 +395,7 @@
   // v1.2.1: عينات أشكال رسائل WebSocket (مفاتيح فقط، بلا قيم) واسم
   // الزوج كما رآه الخطاف داخل الصفحة — للتشخيص في اللوحة.
   var wsDiagSamples = [], wsHookAsset = '';
+  var lastLoggedPageSuccessauth = 0; // v1.2.4: آخر عدد successauth سُجّل في سجل اللوحة
   // v1.2.3 (A): سجل السوكيتات حسب الـ URL — {url, msgs, events, firstAt, lastAt}
   var poSockets = {};
   // v1.2.3 (E): هل تحققنا فعلاً أن الخطاف مثبّت في سياق الصفحة؟
@@ -403,7 +404,7 @@
   var clickFallbackRect = null; // v1.2.3 (H): آخر مستطيل زر عُثر عليه (لبديل الإحداثيات)
 var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر القابلة للنقر
   // v1.2.3 (own socket): اتصال Socket.IO خاص بالسكربت من داخل الصفحة.
-  var ownSocket = { ws: null, state: 'idle', authed: false, asset: '', ticks: 0, lastTickAt: 0, lastFrameAt: 0, frames: { open: 0, connect: 0, successauth: 0, updateStream: 0 }, authSentAt: 0, subSentAt: 0, orderWaiters: [], frameShapes: {} };
+  var ownSocket = { ws: null, state: 'idle', authed: false, asset: '', ticks: 0, lastTickAt: 0, lastFrameAt: 0, frames: { open: 0, connect: 0, successauth: 0, updateStream: 0 }, authSentAt: 0, subSentAt: 0, orderWaiters: [], frameShapes: {}, retries: 0 };
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -1658,6 +1659,66 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
           try { window.__poSockets = PO_SOCKETS; } catch (e) {}
         } catch (e) {}
       }
+      // v1.2.4: اعتراض رسالة auth الصادرة من الصفحة نفسها.
+      // الصفحة ترسل 42["auth",{"session":...,"uid":...,"isDemo":...}]
+      // مرة واحدة عند اتصالها — فيها session+uid معاً، بينما
+      // document.cookie قد يحمل الجلسة بلا uid (الفشل الحي 12:52).
+      // القيم لا تُسجَّل أبداً ولا تُرسَل لأي مكان؛ تُحفظ في
+      // window.__poAuthLast (في الذاكرة فقط) وتُنشر في الجسر
+      // علامات وجود فقط (data-auth-intercepted / data-auth-has-uid).
+      var PO_AUTH = null; // {session, uid, isDemo, at, extra}
+      function extractBalancedJson(s, start) {
+        // يفك قيمة JSON متوازنة الأقواس تبدأ عند start (محلل أقواس،
+        // لا regex هش) — يحترم النصوص والهروب داخلها.
+        try {
+          var open = s.charAt(start);
+          if (open !== '[' && open !== '{') return null;
+          var depth = 0, inStr = false, esc = false, i, ch;
+          for (i = start; i < s.length; i++) {
+            ch = s.charAt(i);
+            if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+            if (ch === '"') { inStr = true; continue; }
+            if (ch === '[' || ch === '{') depth++;
+            else if (ch === ']' || ch === '}') { depth--; if (depth === 0) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; } } }
+          }
+        } catch (e) {}
+        return null;
+      }
+      function publishAuth() {
+        try {
+          var b = document.getElementById(BRIDGE_ID);
+          if (b && PO_AUTH) {
+            b.setAttribute('data-auth-intercepted', '1');
+            b.setAttribute('data-auth-has-uid', (PO_AUTH.uid !== null && PO_AUTH.uid !== undefined) ? '1' : '0');
+            b.setAttribute('data-auth-at', String(PO_AUTH.at || 0));
+          }
+        } catch (e) {}
+        try { if (PO_AUTH) window.__poAuthLast = PO_AUTH; } catch (e2) {}
+      }
+      function scanOutgoingAuth(text) {
+        try {
+          var s = String(text || '');
+          if (s.indexOf('auth') === -1) return;
+          var idx = s.indexOf('["auth"');
+          if (idx === -1) return;
+          var arr = extractBalancedJson(s, idx);
+          if (!arr || !Array.isArray(arr) || arr[0] !== 'auth') return;
+          var obj = arr[1];
+          if (!obj || typeof obj !== 'object') return;
+          var sess = (typeof obj.session === 'string' && obj.session) ? obj.session : null;
+          if (!sess) return;
+          var rec = { session: sess, uid: (obj.uid !== undefined && obj.uid !== null) ? obj.uid : null, isDemo: null, at: Date.now(), extra: {} };
+          if (obj.isDemo === 1 || obj.isDemo === true) rec.isDemo = 1;
+          else if (obj.isDemo === 0 || obj.isDemo === false) rec.isDemo = 0;
+          // أي حقول إضافية في رسالة الصفحة تُحفظ حرفياً وتُعاد كما
+          // هي في إطار auth الخاص (بلا تخمين وبلا تسجيل لقيمها).
+          for (var k in obj) {
+            if (k !== 'session' && k !== 'uid' && k !== 'isDemo') { try { rec.extra[k] = obj[k]; } catch (e) {} }
+          }
+          PO_AUTH = rec;
+          publishAuth();
+        } catch (e) {}
+      }
       var PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price', 'open', 'current', 'spot', 'mid'];
       function normSym(s) { try { return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, ''); } catch (e) { return ''; } }
       function numVal(v) {
@@ -1974,6 +2035,24 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
             }
             var bb = document.getElementById(BRIDGE_ID);
             if (bb) { try { bb.setAttribute('data-io-events', JSON.stringify(ioEvents)); } catch (e2) {} }
+            // v1.2.4: سجّل successauth على سوكيت الصفحة بأي شكل كان
+            // (42 أو 451-، مسمّى أو بلا اسم) — العدّاد الحي أظهر
+            // handshake×15 و updateAssets×1 لكن successauth×0،
+            // فيجب أن نعرف هل يصل أصلاً أم يصل بشكل غير معروف.
+            try {
+              var _saName = null, _saPayload = null;
+              if (sio.kind === 'event' && String(sio.event || '').toLowerCase() === 'successauth') { _saName = sio.event; _saPayload = sio.payload; }
+              else if (sio.kind === 'data' && Array.isArray(sio.payload) && typeof sio.payload[0] === 'string' && sio.payload[0].toLowerCase() === 'successauth') { _saName = sio.payload[0]; _saPayload = sio.payload.length > 1 ? sio.payload[1] : null; }
+              if (_saName) {
+                var _saCount = (window.__poPageSuccessauthCount || 0) + 1;
+                window.__poPageSuccessauthCount = _saCount;
+                var _saShape = '';
+                try { var _kk = keysOf(_saPayload, 0); _saShape = _kk.sensitive ? 'SENSITIVE' : _kk.keys.join(','); } catch (e9) {}
+                window.__poPageSuccessauthShape = _saShape;
+                var _bb2 = document.getElementById(BRIDGE_ID);
+                if (_bb2) { _bb2.setAttribute('data-page-successauth', String(_saCount)); _bb2.setAttribute('data-page-successauth-shape', _saShape); }
+              }
+            } catch (e8) {}
             try { publishSockets(); } catch (e5) {}
           } catch (e3) {}
           var b = document.getElementById(BRIDGE_ID);
@@ -2038,6 +2117,21 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
           }
         });
       } catch (e) {}
+      // v1.2.4: غلّف WebSocket.prototype.send لاعتراض رسالة auth
+      // الصادرة من الصفحة — التغليف على الـ prototype يمسك إرسال
+      // أي سوكيت، حتى لو أُنشئ قبل الحقن.
+      try {
+        var OrigWSSend = WebSocket.prototype.send;
+        WebSocket.prototype.send = function (data) {
+          try {
+            if (typeof data === 'string') scanOutgoingAuth(data);
+            else if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) {
+              try { scanOutgoingAuth(new TextDecoder('utf-8').decode(data)); } catch (e) {}
+            }
+          } catch (e2) {}
+          return OrigWSSend.apply(this, arguments);
+        };
+      } catch (e) {}
       // (1) غلّف منشئ WebSocket: أي سوكيت جديد يُعلَّق عليه مستمع داخلي.
       try {
         var OrigWS = window.WebSocket;
@@ -2083,6 +2177,7 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
               } catch (e) {}
             });
           } catch (e) {}
+          try { var _bd = arguments[0]; if (typeof _bd === 'string') scanOutgoingAuth(_bd); } catch (e) {}
           return OrigXHRsend.apply(this, arguments);
         };
       } catch (e) {}
@@ -2092,6 +2187,7 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
           window.fetch = function (input, init) {
             var u = '';
             try { u = typeof input === 'string' ? input : (input && input.url ? input.url : ''); } catch (e) {}
+            try { if (init && typeof init.body === 'string') scanOutgoingAuth(init.body); } catch (e) {}
             return origFetch.apply(this, arguments).then(function (resp) {
               try {
                 if (/socket\.io|EIO=/.test(u) && resp && typeof resp.clone === 'function') {
@@ -2176,6 +2272,19 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
       var socks = b.getAttribute('data-sockets') || '';
       if (socks) {
         try { var parsedS = JSON.parse(socks); if (parsedS && typeof parsedS === 'object') poSockets = parsedS; } catch (e) {}
+      }
+      // v1.2.4: إن رأى الخطاف successauth على سوكيت الصفحة بأي شكل،
+      // سجّله في سجل اللوحة مرة واحدة (شكل الحمولة مفاتيح فقط).
+      var psa = b.getAttribute('data-page-successauth') || '';
+      if (psa) {
+        try {
+          var psn = parseInt(psa, 10);
+          if (!isNaN(psn) && psn > lastLoggedPageSuccessauth) {
+            lastLoggedPageSuccessauth = psn;
+            var pshape = b.getAttribute('data-page-successauth-shape') || '';
+            logLine('✅ خطاف الصفحة: رأى successauth على سوكيت المنصة (عدد: ' + psn + (pshape ? ' — شكل الحمولة (مفاتيح فقط): ' + pshape : '') + ') — يعني الصفحة نفسها مصادَق عليها، والسعر يجب أن يتدفق بعد الاشتراك.');
+          }
+        } catch (e) {}
       }
       var smp = b.getAttribute('data-sample') || '';
       if (smp) {
@@ -2391,6 +2500,13 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
   // الأول يسجّل الإطارات الخام (0، 40، successauth، أول updateStream)
   // قبل أي تداول. التنفيذ عبر openOrder معطّل: اسم الحدث موثق لكن
   // شكل حمولته غير موثق، ولن تُخمَّن حمولة أمر تداول.
+  // v1.2.4 — فشل حي 12:52 EET: وُجد كوكي جلسة لكن بلا uid، فأُرسل
+  // auth بلا uid وأغلق السيرفر الاتصال بعد 33 ث (successauth×0).
+  // الإصلاح: اعتراض رسالة auth الصادرة من الصفحة نفسها
+  // (42["auth",{session,uid,isDemo}] — نفس فكرة auth-hook.js في
+  // إضافة فايرفوكس) واستخدام session+uid معاً منها؛ وإن غاب الـ uid
+  // لا يُرسل auth أصلاً (حالة 'no-uid')، ويُعاد الاتصال حتى 3 مرات
+  // بفاصل تصاعدي بعد إغلاقٍ تلا إرسال auth بلا successauth.
   var OWN_SOCKET_URL = 'wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket';
   function ownSocketCookieValue(re) {
     try {
@@ -2403,20 +2519,53 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
     } catch (e) {}
     return null;
   }
-  function ownSocketConnect(asset) {
+  // v1.2.4: اقرأ auth المعترض من رسالة الصفحة نفسها أولاً
+  // (window.__poAuthLast — ينشره الخطاف في سياق الصفحة).
+  // القيم لا تُسجَّل أبداً؛ يُفحص وجودها فقط.
+  function ownSocketInterceptedAuth() {
+    try {
+      var a = null;
+      try { a = window.__poAuthLast || null; } catch (e) {}
+      if (a && typeof a.session === 'string' && a.session) return a;
+    } catch (e) {}
+    return null;
+  }
+  function ownSocketConnect(asset, isRetry) {
     if (ownSocket.state === 'connecting' || ownSocket.state === 'open' || ownSocket.state === 'authed') return;
+    if (!isRetry) ownSocket.retries = 0;
     if (!isDemo()) { logLine('⛔ السوكيت الخاص يعمل على الديمو فقط — الحساب الحالي مش ديمو.'); return; }
-    // اقرأ الكوكي فقط — لا تسجّل القيم أبداً، ولا ترسلها لأي مكان
-    // غير إطار auth إلى خادم المنصة نفسه.
-    var session = ownSocketCookieValue(/^(session|ssid)$/i) || ownSocketCookieValue(/session/i);
-    var uid = ownSocketCookieValue(/^uid$/i);
-    var isDemoCookie = ownSocketCookieValue(/^isdemo$/i);
+    // v1.2.4: الأولوية لـ auth المعترض (session+uid معاً من رسالة
+    // الصفحة)؛ والبديل كوكيز document.cookie فقط إن لم يُعترض شيء.
+    // لا تُسجَّل القيم أبداً، ولا تُرسل لأي مكان غير إطار auth
+    // إلى خادم المنصة نفسه.
+    var intercepted = ownSocketInterceptedAuth();
+    var session = null, uid = null, isDemoVal = 1, extraFields = null, authSource = '';
+    if (intercepted) {
+      session = intercepted.session;
+      uid = (intercepted.uid !== undefined && intercepted.uid !== null) ? intercepted.uid : null;
+      if (intercepted.isDemo === 0 || intercepted.isDemo === 1) isDemoVal = intercepted.isDemo;
+      extraFields = intercepted.extra || null;
+      authSource = 'رسالة الصفحة المعترضة';
+    } else {
+      session = ownSocketCookieValue(/^(session|ssid)$/i) || ownSocketCookieValue(/session/i);
+      uid = ownSocketCookieValue(/^uid$/i);
+      var isDemoCookie = ownSocketCookieValue(/^isdemo$/i);
+      if (isDemoCookie !== null) { var dv0 = parseInt(isDemoCookie, 10); if (dv0 === 0 || dv0 === 1) isDemoVal = dv0; }
+      authSource = 'كوكيز document.cookie';
+    }
     if (!session) {
-      logLine('⛔ السوكيت الخاص: لم أجد كوكي جلسة (session/ssid) في document.cookie — سجّل الدخول في المتصفح أولاً، ثم أعد المحاولة.');
+      logLine('⛔ السوكيت الخاص: لم أجد كوكي جلسة (session/ssid) في document.cookie ولم يُعترض auth من الصفحة بعد — سجّل الدخول في المتصفح أولاً، ثم أعد تحميل الصفحة (ليُرسل auth من جديد) وأعد المحاولة.');
       ownSocket.state = 'no-session';
       return;
     }
-    logLine('🔌 السوكيت الخاص: وجدت كوكي جلسة (القيمة مخفية — لا تُسجَّل ولا تُرسل) و uid ' + (uid ? 'موجود' : 'غير موجود') + ' — أتصل بـ demo-api-eu.po.market ...');
+    // v1.2.4: لا ترسل auth بلا uid أبداً — الفشل الحي 12:52 كان
+    // بالظبط كده: أُرسل auth بلا uid فأغلق السيرفر الاتصال بعد 33 ث.
+    if (uid === null || uid === undefined) {
+      logLine('⛔ السوكيت الخاص: لا يمكن المصادقة — uid غير موجود (الجلسة موجودة لكن بلا uid). بانتظار اعتراض رسالة auth من الصفحة — أعد تحميل الصفحة أو بدّل الزوج ليُرسل auth من جديد، ثم أعد المحاولة.');
+      ownSocket.state = 'no-uid';
+      return;
+    }
+    logLine('🔌 السوكيت الخاص: سأصادق بـ session+uid معاً (المصدر: ' + authSource + ' — القيم مخفية، لا تُسجَّل ولا تُرسَل) — أتصل بـ demo-api-eu.po.market ...');
     ownSocket.state = 'connecting';
     ownSocket.asset = normWsSymbol(asset || readAssetName() || '');
     ownSocket.authSentAt = 0; ownSocket.subSentAt = 0; ownSocket.ticks = 0;
@@ -2433,9 +2582,12 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
       try { ws.send('40'); } catch (e) {}
       // auth — الصيغة الموثقة في المصادر فقط:
       // 42["auth",{"session":...,"isDemo":1,"uid":...,"platform":2,...}]
-      var authObj = { session: session, isDemo: 1, platform: 2, isFastHistory: true, isOptimized: true };
-      if (uid) authObj.uid = uid;
-      if (isDemoCookie !== null) { var dv = parseInt(isDemoCookie, 10); if (dv === 0 || dv === 1) authObj.isDemo = dv; }
+      // v1.2.4: أي حقول إضافية في رسالة الصفحة تُعاد حرفياً كما هي؛
+      // فوقها الحقول الموثقة (session/isDemo/uid/platform/...).
+      var authObj = {};
+      if (extraFields) { for (var ek in extraFields) { try { authObj[ek] = extraFields[ek]; } catch (e) {} } }
+      authObj.session = session; authObj.isDemo = isDemoVal; authObj.uid = uid;
+      authObj.platform = 2; authObj.isFastHistory = true; authObj.isOptimized = true;
       try {
         ws.send('42' + JSON.stringify(['auth', authObj]));
         ownSocket.authSentAt = Date.now();
@@ -2457,8 +2609,21 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
       } catch (e) {}
     };
     ws.onclose = function () {
+      var wasAuthed = (ownSocket.state === 'authed');
       if (ownSocket.state !== 'closed') logLine('🔌 السوكيت الخاص: أُغلق الاتصال (الحالة: ' + ownSocket.state + ').');
       ownSocket.state = 'closed'; ownSocket.ws = null;
+      // v1.2.4: إن أُغلق الاتصال بعد إرسال auth بلا successauth،
+      // أعد المحاولة حتى 3 مرات بفاصل تصاعدي (5 ث، 15 ث، 30 ث)،
+      // مع إعادة قراءة auth المعترض أولاً في كل مرة (قد يكون
+      // وصل في هذه الأثناء). بعد 3 فشلات، توقف بسطر واضح.
+      if (!wasAuthed && ownSocket.authSentAt && ownSocket.retries < 3) {
+        ownSocket.retries++;
+        var delay = [5000, 15000, 30000][ownSocket.retries - 1] || 30000;
+        logLine('🔌 السوكيت الخاص: إعادة محاولة ' + ownSocket.retries + '/3 بعد ' + (delay / 1000) + ' ث — سأعيد قراءة auth المعترض أولاً.');
+        setTimeout(function () { try { ownSocketConnect(ownSocket.asset, true); } catch (e) {} }, delay);
+      } else if (!wasAuthed && ownSocket.authSentAt && ownSocket.retries >= 3) {
+        logLine('⛔ السوكيت الخاص: فشلت المصادقة 3 مرات متتالية — توقفت عن إعادة المحاولة. بدّل الزوج أو أعد تحميل الصفحة ليُرسل auth جديد، ثم اضغط START من جديد.');
+      }
     };
     ws.onerror = function () { logLine('❌ السوكيت الخاص: خطأ في الاتصال.'); };
   }
@@ -2487,7 +2652,7 @@ var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر 
         }
         if (evn.toLowerCase() === 'successauth') {
           ownSocket.frames.successauth++;
-          ownSocket.state = 'authed'; ownSocket.authed = true;
+          ownSocket.state = 'authed'; ownSocket.authed = true; ownSocket.retries = 0;
           logLine('✅ السوكيت الخاص: successauth — المصادقة نجحت، سأشترك في الزوج.');
           ownSocketSubscribe(ownSocket.asset);
           return;
