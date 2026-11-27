@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.1.2
+// @version      1.1.3
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
@@ -78,6 +78,39 @@
   - كل شيء آخر بلا تغيير (11 استراتيجية، الأوضاع، الفلاتر،
     حدود المخاطر، ديمو فقط، بلا SSID/API).
 
+
+  ============================================================
+  v1.1.3 — السعر على الموبايل مرسوم على Canvas فقط، مصدر خارجي
+  ============================================================
+  الدليل من لقطة المستخدم (v1.1.2، الساعة 10:31):
+  "تشخيص السعر: 1.92 (2)، 0.92 (2) | أرقام عشرية: 1 |
+  SVG: 0 | Shadow: 0 | iframes: 0/1" — الأرقام العشرية
+  الوحيدة التي يراها السكربت هي 1.92 (دولار العائد) و 0.92
+  (نسبة العائد 92%)، ولا يوجد أي سعر مثل 1.00xxx في DOM
+  إطلاقاً، ولا SVG ولا Shadow DOM، والـ iframe الوحيد
+  كروس-أوريجن ولا يمكن قراءته. إذن سعر الشارت مرسوم
+  على <canvas> فقط، ولا قارئ DOM يستطيع رؤيته.
+  الإصلاح في v1.1.3 (بدون كوكيز، بدون SSID، بدون API خاص):
+  - يبقى سعر الصفحة (DOM) هو المصدر الأول — يعمل على
+    نسخة سطح المكتب إن وُجد السعر في DOM.
+  - إذا غاب سعر DOM لمدة 30 ثانية، ينتقل السكربت تلقائياً
+    إلى مصدر عام بلا مصادقة: Yahoo Finance (query1 ثم
+    query2)، لسعر الزوج الحالي، مثلاً AUD/CAD OTC ->
+    AUDCAD=X، EUR/USD -> EURUSD=X، BTC/USD -> BTC-USD،
+    XAU/USD -> GC=F. يُبنى من السعر الخارجي شموع 15 ثانية
+    بنفس طريقة سعر الصفحة تماماً.
+  - اللوحة توضح المصدر النشط بوضوح: "السعر من: الصفحة"
+    (أخضر) أو "السعر من: Yahoo (خارجي)" (برتقالي)، مع
+    تحذير يُسجَّل مرة واحدة عند التبديل.
+  ⚠️ تحذير مهم: سعر Yahoo هو سعر السوق الحقيقي العام،
+  أما Pocket Option OTC فسعره صناعي خاص بالمنصة وقد
+  يختلف عنه — فالإشارات المبنية على المصدر الخارجي
+  تقريبية فقط، وليست سعر المنصة نفسه.
+  - إذا فشل DOM و Yahoo معاً، يستمر التحذير بعد 60 ثانية
+    ويستمر السكربت في المحاولة دون أن يتعطل.
+  - كل شيء آخر بلا تغيير (11 استراتيجية، الأوضاع،
+    الفلاتر، حدود المخاطر، ديمو فقط، بلا SSID/API/كوكيز).
+
   ديمو فقط — أتمتة الواجهة مخالفة لشروط Pocket Option وقد
   تؤدي لحظر الحساب حتى على الديمو. للتعلم والتجربة على
   الديمو فقط، وبمبالغ صغيرة جداً. مفيش أي ضمان ربح.
@@ -131,6 +164,12 @@
   // حتى نرى من لقطة المستخدم ما الذي يراه البوت فعلاً.
   var diagState = { candidates: {}, totalDecimals: 0, svgTexts: 0, shadowRoots: 0, iframes: 0, iframesOk: 0, method: '', lastScanAt: 0 };
   var diagLoggedAt = 0, diagDisplayAt = 0;
+  // v1.1.3: مصدر السعر النشط ('dom' | 'yahoo' | null) وحالة المصدر
+  // الخارجي العام. بلا كوكيز، بلا SSID، بلا API خاص — Yahoo Finance
+  // مصدر عام بلا مصادقة، ويُستخدم فقط إذا غاب سعر DOM 30 ثانية.
+  var priceSource = null; // 'dom' أو 'yahoo' أو null (لا سعر بعد)
+  var yahooLastTryAt = 0, yahooInFlight = false, yahooWarned = false, yahooLastOkAt = 0;
+  var yahooFailSince = 0, currentAsset = '', currentAssetAt = 0;
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -543,13 +582,21 @@
     var s = String(v);
     return s.indexOf('.') === -1 ? 0 : s.split('.')[1].length;
   }
-  function notePrice(v, method) {
-    // سجّل طريقة النجاح مرة واحدة عند تغيّرها فقط، حتى لا يمتلئ السجل
+  function notePrice(v, method, source) {
+    // source: 'dom' (افتراضي) أو 'yahoo' (مصدر عام خارجي، v1.1.3).
+    // سجّل طريقة النجاح مرة واحدة عند تغيّرها فقط، حتى لا يمتلئ السجل.
+    source = source || 'dom';
+    if (source === 'dom' && priceSource === 'yahoo') {
+      logLine('✅ رجع السعر من الصفحة — وقف المصدر الخارجي (Yahoo)');
+      yahooWarned = false;
+    }
     if (method !== lastPriceMethod) {
       lastPriceMethod = method;
       logLine('السعر من ' + method + ': ' + v);
     }
+    priceSource = source;
     lastPrice = v; lastPriceAt = Date.now(); priceFailSince = 0;
+    if (source === 'yahoo') { yahooLastOkAt = Date.now(); yahooFailSince = 0; }
     diagState.method = method;
     return v;
   }
@@ -609,7 +656,8 @@
       + ' | SVG: ' + diagState.svgTexts
       + ' | Shadow: ' + diagState.shadowRoots
       + ' | iframes: ' + diagState.iframesOk + '/' + diagState.iframes
-      + (diagState.method ? ' | من: ' + diagState.method : '');
+      + (diagState.method ? ' | من: ' + diagState.method : '')
+      + (priceSource === 'yahoo' ? ' | المصدر: Yahoo (خارجي)' : priceSource === 'dom' ? ' | المصدر: الصفحة' : '');
     diagDisplayAt = Date.now();
   }
   function logDiagCandidates(force) {
@@ -792,8 +840,10 @@
     if (!el) return;
     if (lastPrice !== null) {
       var secs = Math.floor((Date.now() - lastPriceAt) / 1000);
-      el.textContent = 'السعر: ' + lastPrice + ' | آخر قراءة: منذ ' + secs + ' ث (' + lastPriceMethod + ')';
-      el.style.color = secs > 10 ? '#f39c12' : '#2ecc71';
+      var srcLabel = priceSource === 'yahoo' ? 'السعر من: Yahoo (خارجي)' : 'السعر من: الصفحة';
+      el.textContent = 'السعر: ' + lastPrice + ' | ' + srcLabel + ' | آخر قراءة: منذ ' + secs + ' ث (' + lastPriceMethod + ')';
+      // أخضر لسعر الصفحة، برتقالي لسعر Yahoo الخارجي (تقريبي)
+      el.style.color = priceSource === 'yahoo' ? '#f39c12' : (secs > 10 ? '#f39c12' : '#2ecc71');
     } else {
       el.textContent = 'السعر: - | آخر قراءة: لم تُقرأ بعد';
       el.style.color = '#e74c3c';
@@ -805,7 +855,129 @@
     var now = Date.now();
     if (now - priceFailSince >= 60000 && now - priceWarnLoggedAt >= 60000) {
       priceWarnLoggedAt = now;
-      logLine('⚠️ مش لاقي السعر في الصفحة منذ 60 ثانية - جرّب وضع سطح المكتب أو أعد تحميل الصفحة');
+      logLine('⚠️ مش لاقي السعر في الصفحة ولا من Yahoo منذ 60 ثانية - جرّب وضع سطح المكتب أو أعد تحميل الصفحة');
+    }
+  }
+  // ---------- مصدر السعر الخارجي العام (v1.1.3) — Yahoo Finance ----------
+  // لا كوكيز، لا SSID، لا توكن، لا API خاص: Yahoo Finance مصدر
+  // عام بلا مصادقة. يُستخدم فقط إذا غاب سعر DOM لمدة 30 ثانية
+  // (وهو حال موبايل Pocket Option، حيث السعر مرسوم على Canvas).
+  // ⚠️ سعر Yahoo هو سعر السوق الحقيقي العام، أما سعر Pocket Option
+  // OTC فهو سعر صناعي خاص بالمنصة وقد يختلف عنه — فالإشارات
+  // المبنية على هذا المصدر تقريبية فقط، وليست سعر المنصة نفسه.
+  // جدول الزوج -> رمز Yahoo (صريح أولاً، ثم قاعدة عامة للفوركس).
+  var YAHOO_MAP = {
+    'AUD/CAD': 'AUDCAD=X', 'EUR/USD': 'EURUSD=X', 'GBP/USD': 'GBPUSD=X',
+    'USD/JPY': 'USDJPY=X', 'AUD/USD': 'AUDUSD=X', 'EUR/JPY': 'EURJPY=X',
+    'GBP/JPY': 'GBPJPY=X', 'USD/CAD': 'USDCAD=X', 'NZD/USD': 'NZDUSD=X',
+    'USD/CHF': 'USDCHF=X', 'EUR/GBP': 'EURGBP=X', 'AUD/JPY': 'AUDJPY=X',
+    'EUR/AUD': 'EURAUD=X', 'GBP/AUD': 'GBPAUD=X', 'NZD/JPY': 'NZDJPY=X',
+    'AUD/NZD': 'AUDNZD=X', 'EUR/CAD': 'EURCAD=X', 'GBP/CAD': 'GBPCAD=X',
+    'EUR/CHF': 'EURCHF=X', 'GBP/CHF': 'GBPCHF=X', 'USD/MXN': 'USDMXN=X',
+    'USD/ZAR': 'USDZAR=X', 'USD/TRY': 'USDTRY=X', 'EUR/NZD': 'EURNZD=X',
+    'GBP/NZD': 'GBPNZD=X', 'CAD/JPY': 'CADJPY=X', 'CHF/JPY': 'CHFJPY=X',
+    'BTC/USD': 'BTC-USD', 'ETH/USD': 'ETH-USD', 'LTC/USD': 'LTC-USD',
+    'XRP/USD': 'XRP-USD', 'SOL/USD': 'SOL-USD', 'DOGE/USD': 'DOGE-USD',
+    'XAU/USD': 'GC=F', 'XAG/USD': 'SI=F', 'USOIL': 'CL=F', 'UKOIL': 'BZ=F',
+    'OIL/USD': 'CL=F', 'BRENT/USD': 'BZ=F'
+  };
+  function yahooSymbolForAsset(asset) {
+    if (!asset) return null;
+    // نظّف الاسم: "AUD/CAD OTC" -> "AUD/CAD"، "BTC/USD" كما هو.
+    var a = String(asset).toUpperCase().replace(/\s*OTC\s*/g, '').replace(/[^A-Z\/]/g, '').trim();
+    if (YAHOO_MAP[a]) return YAHOO_MAP[a];
+    // قاعدة عامة للفوركس: أي زوج XXX/YYY من 3 حروف -> XXXYYY=X
+    var m = a.match(/^([A-Z]{3})\/([A-Z]{3})$/);
+    if (m) return m[1] + m[2] + '=X';
+    return null;
+  }
+  // اقرأ اسم الزوج الحالي من الصفحة (مثلاً "AUD/CAD OTC")، مع تخزين
+  // مؤقت 60 ثانية حتى لا نمسح innerText كل ثانية.
+  function readAssetName() {
+    var now = Date.now();
+    if (currentAsset && now - currentAssetAt < 60000) return currentAsset;
+    try {
+      var txt = (document.body && (document.body.innerText || document.body.textContent)) || '';
+      // أولاً: أزواج معروفة (فوركس / كريبتو / ذهب) — الأطول أولاً.
+      var known = Object.keys(YAHOO_MAP);
+      for (var i = 0; i < known.length; i++) {
+        if (txt.indexOf(known[i]) !== -1) { currentAsset = known[i]; currentAssetAt = now; return currentAsset; }
+      }
+      // ثانياً: أي نمط XXX/YYY عام (3 حروف / 3 حروف).
+      var m = txt.match(/\b([A-Z]{3})\/([A-Z]{3})\b/);
+      if (m) { currentAsset = m[1] + '/' + m[2]; currentAssetAt = now; return currentAsset; }
+    } catch (e) { /* تجاهل */ }
+    currentAsset = ''; currentAssetAt = now;
+    return '';
+  }
+  // استخرج السعر من رد Yahoo: chart API (meta.regularMarketPrice)
+  // أو quote API (quoteResponse.result[0].regularMarketPrice).
+  function parseYahooPrice(json) {
+    try {
+      if (json && json.chart && json.chart.result && json.chart.result[0] && json.chart.result[0].meta) {
+        var p = json.chart.result[0].meta.regularMarketPrice;
+        if (typeof p === 'number' && isFinite(p) && p > 0) return p;
+      }
+      if (json && json.quoteResponse && json.quoteResponse.result && json.quoteResponse.result[0]) {
+        var q = json.quoteResponse.result[0].regularMarketPrice;
+        if (typeof q === 'number' && isFinite(q) && q > 0) return q;
+      }
+    } catch (e) { /* تجاهل */ }
+    return null;
+  }
+  // جلب سعر Yahoo لزوج معين. يرجع Promise<number|null>.
+  // query1 أولاً، ثم query2 كبديل. بلا كوكيز/مصادقة (fetch عادي).
+  // ملاحظة: إذا حظر المتصفح الطلب بسبب CORS، يفشل بهدوء ويرجع null.
+  async function fetchYahooPrice(symbol) {
+    if (!symbol || typeof fetch === 'undefined') return null;
+    var hosts = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
+    for (var i = 0; i < hosts.length; i++) {
+      try {
+        var res = await fetch(hosts[i] + '/v8/finance/chart/' + encodeURIComponent(symbol), { method: 'GET', credentials: 'omit' });
+        if (!res || !res.ok) continue;
+        var json = await res.json();
+        var price = parseYahooPrice(json);
+        if (price !== null) return price;
+      } catch (e) { /* جرّب المضيف التالي */ }
+    }
+    // بديل أخير: quote API
+    try {
+      var res2 = await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + encodeURIComponent(symbol), { method: 'GET', credentials: 'omit' });
+      if (res2 && res2.ok) {
+        var json2 = await res2.json();
+        return parseYahooPrice(json2);
+      }
+    } catch (e) { /* تجاهل */ }
+    return null;
+  }
+  // المحاولة الخارجية: تُستدعى من الحلقة الرئيسية فقط عندما يغيب
+  // سعر DOM منذ 30 ثانية، وبحد أقصى محاولة كل 5 ثوانٍ (حتى لا
+  // نُغرق Yahoo بطلبات). ترجع السعر أو null.
+  async function tryYahooFallback() {
+    if (yahooInFlight) return null;
+    var now = Date.now();
+    if (now - yahooLastTryAt < 5000) return null;
+    yahooLastTryAt = now;
+    var asset = readAssetName();
+    var symbol = yahooSymbolForAsset(asset);
+    if (!symbol) {
+      if (!yahooFailSince) yahooFailSince = now;
+      return null;
+    }
+    yahooInFlight = true;
+    try {
+      var price = await fetchYahooPrice(symbol);
+      if (price !== null) {
+        if (!yahooWarned) {
+          yahooWarned = true;
+          logLine('⚠️ السعر من مصدر خارجي عام (Yahoo: ' + symbol + ') - سعر Pocket Option OTC ممكن يختلف عنه، فالإشارات تقريبية');
+        }
+        return notePrice(price, 'Yahoo ' + symbol, 'yahoo');
+      }
+      if (!yahooFailSince) yahooFailSince = now;
+      return null;
+    } finally {
+      yahooInFlight = false;
     }
   }
   function readPayout() {
@@ -866,9 +1038,16 @@
   }
 
   // ---------- الحلقة الرئيسية: بناء شموع 15 ثانية من السعر الحي ----------
-  setInterval(function () {
+  // v1.1.3: إذا غاب سعر DOM لمدة 30 ثانية، جرّب Yahoo (مصدر عام).
+  setInterval(async function () {
     if (!running) return;
     var price = readPrice();
+    if (!price) {
+      // سعر DOM غائب منذ 30 ثانية على الأقل؟ جرّب المصدر الخارجي.
+      if (priceFailSince && Date.now() - priceFailSince >= 30000) {
+        price = await tryYahooFallback();
+      }
+    }
     updatePriceDisplay();
     if (!price) { warnPriceMissing(); return; }
     var now = Math.floor(Date.now() / 1000);
@@ -920,7 +1099,7 @@
     p.id = 'muse-bot-panel';
     p.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:999999;background:#222;color:#fff;'
       + 'padding:12px;border-radius:10px;font-size:13px;width:250px;max-height:85vh;overflow:auto;box-shadow:0 0 12px #000;';
-    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.1.2</b><br>'
+    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.1.3</b><br>'
       + '<span style="color:#f39c12">ديمو بس — أتمتة الواجهة مخالفة لشروط المنصة وقد تؤدي للحظر.</span><br>'
       + 'الوضع: <select id="muse-mode">'
       + Object.keys(MODES).map(function (k) {
@@ -989,6 +1168,9 @@
       diagTopList: diagTopList, collectPriceNumbers: collectPriceNumbers,
       recordCandidate: recordCandidate, updateDiagDisplay: updateDiagDisplay,
       getLastPrice: function () { return lastPrice; },
+      getPriceSource: function () { return priceSource; },
+      yahooSymbolForAsset: yahooSymbolForAsset, parseYahooPrice: parseYahooPrice,
+      readAssetName: readAssetName, YAHOO_MAP: YAHOO_MAP,
       setLastPrice: function (v) { lastPrice = v; lastPriceAt = Date.now(); },
       ema: ema, rsi: rsi, stoch: stoch, macdHist: macdHist, bollinger: bollinger,
       atr: atr, adx: adx, cci: cci, williamsR: williamsR, parabolicSAR: parabolicSAR,
