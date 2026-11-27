@@ -1,0 +1,89 @@
+# Binance Hybrid Bot — GitHub Actions (free hosting)
+# ============================================================================
+# تشغيل مجاني على GitHub Actions — بوت Binance الهجين (Spot / Testnet)
+# Free hosting on GitHub Actions — Binance Hybrid Bot (Spot / Testnet)
+#
+# كيف يعمل: كل 30 دقيقة GitHub يشغّل البوت مرة واحدة (--once): يفحص العملات
+# الخمس، يطبق الفلاتر والاستراتيجية الهجينة، ويدخل صفقات Testnet فقط إذا
+# وجد إشارة. ثم يخرج. لا يوجد سيرفر دائم ولا اشتراك شهري.
+# How it works: every 30 minutes GitHub runs the bot once (--once): it scans
+# the 5 coins, applies filters + hybrid strategy, and opens Testnet trades
+# only on a signal. Then it exits. No always-on server, no monthly fee.
+#
+# ⚠️ المفاتيح (Secrets) — لا تكتبها أبداً في هذا الملف:
+#    GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#    - BINANCE_TESTNET_API_KEY     (من https://testnet.binance.vision)
+#    - BINANCE_TESTNET_API_SECRET  (من https://testnet.binance.vision)
+#    مفاتيح Testnet فقط (فلوس وهمية). لا تضع أبداً مفاتيح حساب حقيقي هنا.
+#    Keys go in repo Settings → Secrets and variables → Actions (never in this
+#    file). Testnet keys ONLY (fake money). Never real-account keys.
+#
+# 💰 الحد المجاني: GitHub يعطي 2000 دقيقة Actions مجاناً كل شهر للحسابات
+#    المجانية. كل تشغيل يأخذ ~1 دقيقة (تثبيت المكتبات + جولة واحدة).
+#    كل 5 دقائق = 12 تشغيل/ساعة = 288 تشغيل/يوم = ~8640 تشغيل/شهر،
+#    أي ~8640 دقيقة/شهر إذا كان كل تشغيل دقيقة كاملة — وهذا يتجاوز
+#    الحد المجاني! لذلك: راقب الاستهلاك في Settings → Billing، وإن اقتربت
+#    من الحد غيّر الجدولة إلى كل 15 دقيقة (96 تشغيل/يوم ≈ 2880 دقيقة/شهر
+#    — ما زال فوق الحد) أو كل 30 دقيقة (48 تشغيل/يوم ≈ 1440 دقيقة/شهر
+#    — داخل الحد). التشغيل اليدوي (workflow_dispatch) لا يستهلك إلا عند استخدامه.
+#    Free tier: 2000 Actions minutes/month on free accounts. Each run takes
+#    ~1 minute. Every 5 min = ~8640 runs/month ≈ 8640 min/month — OVER the
+#    free limit! Watch usage in Settings → Billing, and switch the cron to
+#    every 30 minutes (≈1440 min/month — inside the limit) if needed.
+#    NOTE: pip cache below keeps installs fast so most runs finish in <1 min.
+#
+# 🔒 أمان: التشغيل على Testnet فقط (--env testnet). الوضع الحي بفلوس حقيقية
+#    (--env live) مرفوض في هذا الملف عمداً — لا تغيّره.
+#    Safety: Testnet only. Real-money live mode is deliberately NOT in this file.
+# ============================================================================
+
+name: Binance Hybrid Bot (Testnet, --once)
+
+on:
+  schedule:
+    # كل 30 دقيقة — داخل حد الـ 2000 دقيقة المجانية (≈1440 دقيقة/شهر)
+    # Every 30 minutes — inside the 2000-minute free limit (≈1440 min/month)
+    - cron: "*/30 * * * *"
+  workflow_dispatch:  # تشغيل يدوي من تبويب Actions
+
+# منع تشغيلين متداخلين في نفس الوقت حتى لا تتكرر الصفقات
+# Prevent overlapping runs so the same signal never opens twice
+concurrency:
+  group: binance-hybrid-bot
+  cancel-in-progress: false
+
+jobs:
+  trade-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4  # الجولة الواحدة يجب أن تنتهي خلال 4 دقائق
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"  # تخزين مؤقت للمكتبات — يجعل التشغيل أسرع وأرخص
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot — one pass (Spot / Testnet / --live)
+        env:
+          # المفاتيح من GitHub Secrets — لا تظهر في السجلات
+          BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
+          BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
+          # بلا مفاتيح تيليجرام = بلا تنبيهات (اختياري: أضف TELEGRAM_BOT_TOKEN
+          # و TELEGRAM_CHAT_ID كـ Secrets بنفس الطريقة إن أردت التنبيهات)
+        run: python main.py --mode spot --env testnet --live --once
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-logs-${{ github.run_number }}
+          path: logs/bot.log
+          retention-days: 7
