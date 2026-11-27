@@ -1,0 +1,11 @@
+# Logs and trade records (local only)
+trades.csv
+signals.csv
+bot.log
+# Browser profile — your login session lives here, on your PC only
+chrome-profile/
+__pycache__/
+*.pyc
+.venv/
+venv/
+stop.txt
