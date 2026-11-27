@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>بوت الديمو — Pocket Option</title>
+<style>
+  * { box-sizing: border-box; }
+  body { width: 320px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; font-size: 14px; background: #1e1e2e; color: #fff; direction: rtl; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .warn { color: #f39c12; font-size: 12px; margin: 0 0 10px; }
+  label { display: block; margin-top: 10px; font-size: 13px; color: #ccc; }
+  select, input { width: 100%; padding: 7px; margin-top: 4px; border-radius: 6px; border: 1px solid #555; background: #2c2c40; color: #fff; font-size: 14px; }
+  .row { display: flex; gap: 8px; }
+  .row > div { flex: 1; }
+  button { width: 100%; padding: 10px; margin-top: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
+  #startBtn { background: #27ae60; color: #fff; }
+  #stopBtn { background: #c0392b; color: #fff; }
+  #calBtn { background: #2980b9; color: #fff; }
+  #statusBox { background: #2c2c40; border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 13px; line-height: 1.8; }
+  #msg { color: #9ecbff; font-size: 12px; margin-top: 8px; min-height: 16px; }
+  .small { font-size: 12px; color: #aaa; margin-top: 10px; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <h1>🤖 بوت الديمو — Pocket Option</h1>
+  <p class="warn">ديمو بس — الأتمتة مخالفة لشروط المنصة وقد تؤدي للحظر حتى على الديمو. مفيش ربح مضمون.</p>
+
+  <label>الاستراتيجية
+    <select id="strategy">
+      <option value="confluence">Confluence — اتفاق 3 مؤشرات (الافتراضي)</option>
+      <option value="trend_ema_rsi">ترند EMA + RSI</option>
+      <option value="reversal_rsi_stoch">انعكاس RSI + Stochastic</option>
+      <option value="pullback">Pullback على الترند</option>
+      <option value="alligator_rsi">Alligator + RSI</option>
+    </select>
+  </label>
+
+  <div class="row">
+    <div><label>الأصل<input id="asset" type="text" value="EURUSD"></label></div>
+    <div><label>المبلغ ($)<input id="stake" type="number" min="1" step="0.5" value="1"></label></div>
+    <div><label>المدة (ثانية)<input id="expirySec" type="number" min="30" step="30" value="60"></label></div>
+  </div>
+
+  <div class="row">
+    <div><label>أقصى صفقات/يوم<input id="maxTrades" type="number" min="1" value="10"></label></div>
+    <div><label>حد الخسارة اليومية ($)<input id="dailyLossLimit" type="number" min="1" step="1" value="10"></label></div>
+  </div>
+
+  <div class="row">
+    <div><label>أقل عائد مقبول (%)<input id="minPayout" type="number" min="50" max="99" value="85"></label></div>
+    <div><label>تهدئة بين الصفقات (ث)<input id="cooldownSec" type="number" min="60" value="75"></label></div>
+  </div>
+
+  <button id="saveBtn" style="background:#555;color:#fff">💾 حفظ الإعدادات</button>
+  <button id="startBtn">▶ تشغيل البوت</button>
+  <button id="stopBtn">⛔ إيقاف البوت</button>
+  <button id="calBtn">🎯 معايرة العناصر في الصفحة</button>
+
+  <div id="statusBox">الحالة: —</div>
+  <div id="msg"></div>
+
+  <p class="small">التشغيل: افتح Pocket Option في كروم على الكمبيوتر، سجّل دخولك بنفسك وبدّل للديمو، وبعدين عاير العناصر مرة واحدة (سعر / CALL / PUT) من زر المعايرة، ودوس تشغيل. كروم العادي على أندرويد مش بيدعم الإضافات — على أندرويد استخدم Kiwi + سكربت Tampermonkey اللي في المجلد الرئيسي.</p>
+
+<script src="popup.js"></script>
+</body>
+</html>
