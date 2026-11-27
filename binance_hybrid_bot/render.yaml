@@ -1,0 +1,20 @@
+# Render Background Worker for Binance Hybrid Bot (Testnet by default)
+# Deploy: connect this repo on Render, choose Background Worker, set env vars in Render dashboard.
+# NEVER put API keys in this file or in git. Set them in Render > Environment.
+services:
+  - type: worker
+    name: binance-hybrid-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py --mode spot --env testnet --live
+    envVars:
+      - key: BINANCE_TESTNET_API_KEY
+        sync: false
+      - key: BINANCE_TESTNET_API_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
