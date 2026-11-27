@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.1.0
+// @version      1.1.1
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
@@ -28,6 +28,29 @@
     (مثلاً: "تسخين 12/21" أو "العائد 80% أقل من 85%")،
     فلا يعود الصمت بلا تفسير.
   - أُضيفت 6 استراتيجيات و 6 مؤشرات وفلاتر قابلة للتبديل.
+
+  ============================================================
+  v1.1.1 — إصلاح قراءة السعر على موبايل Pocket Option
+  ============================================================
+  المشكلة في v1.1.0: readPrice() كان يجرب محدداً واحداً فقط
+  ('[class*="price"] [class*="value"]')، وفي نسخة الموبايل
+  (m.pocketoption.com) السعر ظاهر في الصفحة (مثلاً 1.00166
+  في المربع الأزرق على اليمين) لكن لا يطابق هذا المحدد،
+  فكان يرجع null دائماً، واللوحة تظهر "سعر: -" والتسخين
+  عالق على 0/30 شمعة، فلا صفقة أبداً.
+  الإصلاح في v1.1.1:
+  - قراءة السعر بعدة طرق بالترتيب: محددات صريحة كثيرة،
+    ثم خصائص data-price، ثم منطقة الشارت، ثم مسح عام
+    لأرقام عشرية (4-5 خانات) مع تفضيل الأقرب لآخر سعر
+    معروف والأقرب لصندوق السعر أعلى اليمين.
+  - اللوحة تعرض الآن آخر سعر مقروء ووقت آخر قراءة ناجحة،
+    فالمستخدم يرى خلال ثوانٍ هل القراءة تعمل أم لا.
+  - إذا لم يُقرأ السعر 60 ثانية، تظهر رسالة عربية واضحة
+    في السجل: "مش لاقي السعر في الصفحة - جرّب وضع سطح
+    المكتب أو أعد تحميل الصفحة"، ويستمر في المحاولة
+    دون أن يتعطل السكربت.
+  - كل شيء آخر في v1.1.0 بلا تغيير (11 استراتيجية،
+    الأوضاع، الفلاتر، حدود المخاطر، ديمو فقط).
 
   ديمو فقط — أتمتة الواجهة مخالفة لشروط Pocket Option وقد
   تؤدي لحظر الحساب حتى على الديمو. للتعلم والتجربة على
@@ -74,6 +97,9 @@
     filters: { adx: true, atr: true, payout: true, chop: true, session: false }
   };
   var running = false, tradesToday = 0, dailyProfit = 0, consecLosses = 0, lastTradeAt = 0;
+  // حالة قراءة السعر (v1.1.1): آخر سعر ناجح وطريقته ووقته،
+  // حتى تظهر اللوحة ما إذا كانت القراءة تعمل أم عالقة.
+  var lastPrice = null, lastPriceAt = 0, lastPriceMethod = '', priceFailSince = 0, priceWarnLoggedAt = 0;
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -463,11 +489,146 @@
     return res;
   }
 
-  // ---------- قراءة السعر من الصفحة ----------
+  // ---------- قراءة السعر من الصفحة (v1.1.1: متعددة الطرق، لموبايل Pocket Option) ----------
+  // في نسخة الموبايل (m.pocketoption.com) السعر ظاهر في الصفحة
+  // (مثلاً 1.00166 في المربع الأزرق أعلى اليمين) لكن كلاساته
+  // لا تطابق محدد v1.0.1 الوحيد، فكان readPrice يرجع null
+  // دائماً. لذلك نجرب الآن بالترتيب: محددات صريحة، ثم خصائص
+  // data-*، ثم منطقة الشارت، ثم مسح عام لأرقام عشرية مع
+  // تفضيل الأقرب لآخر سعر معروف ولصندوق السعر أعلى اليمين.
+  // الرقم المقبول يجب أن يكون عشرياً (خانتان-5 خانات بعد
+  // الفاصلة) وفي نطاق 0.01-200000، حتى لا نلتقط الرصيد
+  // (152,280 بلا كسور) أو المبلغ (1) أو نسبة العائد (92%).
+  function parsePriceText(text) {
+    if (!text) return null;
+    var t = String(text).replace(/,/g, '').replace(/[^\d.]/g, ' ').trim();
+    var m = t.match(/\d+\.\d{2,5}/);
+    if (!m) return null;
+    var v = parseFloat(m[0]);
+    if (!isFinite(v) || v < 0.01 || v > 200000) return null;
+    return v;
+  }
+  function priceDecimals(v) {
+    var s = String(v);
+    return s.indexOf('.') === -1 ? 0 : s.split('.')[1].length;
+  }
+  function notePrice(v, method) {
+    // سجّل طريقة النجاح مرة واحدة عند تغيّرها فقط، حتى لا يمتلئ السجل
+    if (method !== lastPriceMethod) {
+      lastPriceMethod = method;
+      logLine('السعر من ' + method + ': ' + v);
+    }
+    lastPrice = v; lastPriceAt = Date.now(); priceFailSince = 0;
+    return v;
+  }
   function readPrice() {
-    var el = document.querySelector('[class*="price"] [class*="value"], [data-test*="price"]');
-    if (el) { var v = parseFloat(el.textContent.replace(/[^\d.]/g, '')); if (v) return v; }
+    if (typeof document === 'undefined') return null;
+    var i, els, el, v;
+    // 1) محددات صريحة كثيرة (سطح المكتب + الموبايل)
+    var selectors = [
+      '[class*="price"] [class*="value"]', '[data-test*="price"]', '[data-testid*="price"]',
+      '[class*="current-price"]', '[class*="currentPrice"]', '[class*="asset-price"]',
+      '[class*="assetPrice"]', '[class*="chart-price"]', '[class*="chartPrice"]',
+      '[class*="quote"]', '[class*="Quote"]', '[class*="last-price"]', '[class*="lastPrice"]',
+      '[class*="price-value"]', '[class*="priceValue"]', '[class*="ticker-price"]',
+      '[class*="Price"] [class*="value"]', '[class*="price"]'
+    ];
+    for (i = 0; i < selectors.length; i++) {
+      try { els = document.querySelectorAll(selectors[i]); } catch (e) { continue; }
+      for (var j = 0; j < els.length; j++) {
+        el = els[j];
+        if (!el.textContent || el.textContent.length > 30) continue;
+        v = parsePriceText(el.textContent);
+        if (v) return notePrice(v, 'محدد ' + selectors[i]);
+      }
+    }
+    // 2) خصائص data-price / data-value في أي عنصر
+    try {
+      els = document.querySelectorAll('[data-price], [data-current-price], [data-last-price], [data-value]');
+      for (i = 0; i < els.length; i++) {
+        var attr = els[i].getAttribute('data-price') || els[i].getAttribute('data-current-price')
+          || els[i].getAttribute('data-last-price') || els[i].getAttribute('data-value');
+        v = parsePriceText(attr);
+        if (v) return notePrice(v, 'خاصية data-price');
+      }
+    } catch (e) { /* تجاهل */ }
+    // 3) منطقة الشارت / التلميح (tooltip) إن وجدت
+    var chartRoots = [];
+    try {
+      var chartEls = document.querySelectorAll('[class*="chart"], [id*="chart"], [class*="graph"], [class*="tooltip"], [class*="crosshair"]');
+      for (i = 0; i < chartEls.length; i++) chartRoots.push(chartEls[i]);
+    } catch (e) { /* تجاهل */ }
+    // 4) مسح عام: عناصر ورقية نصها رقم عشري فقط (4-5 خانات مفضلة)،
+    // مع تفضيل الأقرب لآخر سعر، وفي النصف الأيمن/الأعلى من الشاشة
+    // (صندوق السعر في لقطة المستخدم أعلى اليمين: 1.00166).
+    var best = null, bestScore = -1;
+    function scoreCandidate(el2, val, inChart) {
+      var score = 0;
+      var dec = priceDecimals(val);
+      if (dec === 5) score += 10; else if (dec === 4) score += 8; else if (dec === 3) score += 5; else score += 2;
+      if (inChart) score += 4;
+      var cls = ((el2.className && el2.className.baseVal !== undefined) ? el2.className.baseVal : el2.className) || '';
+      var id = el2.id || '';
+      if (/price|chart|quote|current|ticker|rate/i.test(cls + ' ' + id)) score += 5;
+      if (lastPrice && Math.abs(val - lastPrice) / lastPrice < 0.01) score += 12;
+      else if (lastPrice && Math.abs(val - lastPrice) / lastPrice < 0.05) score += 6;
+      try {
+        if (typeof el2.getBoundingClientRect === 'function') {
+          var r = el2.getBoundingClientRect();
+          var vw = (typeof window !== 'undefined' && window.innerWidth) || 1000;
+          var vh = (typeof window !== 'undefined' && window.innerHeight) || 1000;
+          if (r.left > vw * 0.5) score += 5;          // النصف الأيمن (صندوق السعر)
+          if (r.top < vh * 0.4) score += 3;           // النصف الأعلى
+          if (r.width === 0 || r.height === 0) score -= 20; // عنصر مخفي
+        }
+      } catch (e) { /* تجاهل */ }
+      return score;
+    }
+    function scanRoot(root, inChart) {
+      var nodes;
+      try { nodes = root.querySelectorAll('*'); } catch (e) { return; }
+      for (var k = 0; k < nodes.length; k++) {
+        var n = nodes[k];
+        // عنصر ورقي فقط (بلا عناصر أولاد) ونص قصير، حتى لا نلتقط نص الصفحة كله
+        if (n.children && n.children.length > 0) continue;
+        var txt = (n.textContent || '').trim();
+        if (!txt || txt.length > 20 || /[$%€£]/.test(txt) || /USD|Demo|ديمو/.test(txt)) continue;
+        if (!/^\d+\.\d{3,5}$/.test(txt)) continue;
+        var val = parseFloat(txt);
+        if (!isFinite(val) || val < 0.01 || val > 200000) continue;
+        var sc = scoreCandidate(n, val, inChart);
+        if (sc > bestScore) { bestScore = sc; best = val; }
+      }
+    }
+    for (i = 0; i < chartRoots.length; i++) scanRoot(chartRoots[i], true);
+    if (best !== null && bestScore >= 8) return notePrice(best, 'منطقة الشارت');
+    scanRoot(document.body || document.documentElement, false);
+    if (best !== null && bestScore >= 8) return notePrice(best, 'مسح الصفحة (أقرب سعر)');
+    // لم نجد شيئاً: سجّل بداية الفشل حتى يحذّر السجل بعد 60 ثانية
+    if (!priceFailSince) priceFailSince = Date.now();
     return null;
+  }
+  // تحديث عرض السعر في اللوحة: آخر سعر + وقت آخر قراءة ناجحة (v1.1.1)
+  function updatePriceDisplay() {
+    var el = document.getElementById('muse-bot-price');
+    if (!el) return;
+    if (lastPrice !== null) {
+      var secs = Math.floor((Date.now() - lastPriceAt) / 1000);
+      el.textContent = 'السعر: ' + lastPrice + ' | آخر قراءة: منذ ' + secs + ' ث (' + lastPriceMethod + ')';
+      el.style.color = secs > 10 ? '#f39c12' : '#2ecc71';
+    } else {
+      el.textContent = 'السعر: - | آخر قراءة: لم تُقرأ بعد';
+      el.style.color = '#e74c3c';
+    }
+  }
+  function warnPriceMissing() {
+    // تحذير واضح بعد 60 ثانية بلا سعر، ويتكرر كل 60 ثانية كحد أقصى
+    if (!priceFailSince) return;
+    var now = Date.now();
+    if (now - priceFailSince >= 60000 && now - priceWarnLoggedAt >= 60000) {
+      priceWarnLoggedAt = now;
+      logLine('⚠️ مش لاقي السعر في الصفحة منذ 60 ثانية - جرّب وضع سطح المكتب أو أعد تحميل الصفحة');
+    }
   }
   function readPayout() {
     var m = document.body.innerText.match(/(\d{1,3})\s*%/);
@@ -530,7 +691,8 @@
   setInterval(function () {
     if (!running) return;
     var price = readPrice();
-    if (!price) return;
+    updatePriceDisplay();
+    if (!price) { warnPriceMissing(); return; }
     var now = Math.floor(Date.now() / 1000);
     var bucket = now - (now % CANDLE_SEC);
     if (!curCandle || curCandle.time !== bucket) {
@@ -550,17 +712,18 @@
 
   setInterval(async function () {
     if (!running) return;
+    updatePriceDisplay();
     var need = requiredCloses();
     var status = document.getElementById('muse-bot-status');
     if (closes.length < need) {
       var warm = 'تسخين ' + closes.length + '/' + need + ' شمعة (' + CFG.mode + ') — أول صفقة بعد ~' + Math.ceil(need * CANDLE_SEC / 60) + ' دقيقة';
-      if (status) status.textContent = 'سعر: ' + (curCandle ? curCandle.c : '-') + ' | ' + warm;
+      if (status) status.textContent = 'سعر: ' + (lastPrice !== null ? lastPrice : (curCandle ? curCandle.c : '-')) + ' | ' + warm;
       logSkip(warm);
       return;
     }
     var s = decide();
     var ind = allIndicators();
-    var live = 'سعر: ' + (curCandle ? curCandle.c : '-') + ' | RSI ' + (ind.r14 !== null ? ind.r14.toFixed(0) : '-')
+    var live = 'سعر: ' + (lastPrice !== null ? lastPrice : (curCandle ? curCandle.c : '-')) + ' | RSI ' + (ind.r14 !== null ? ind.r14.toFixed(0) : '-')
       + ' | ADX ' + (ind.adx !== null ? ind.adx.toFixed(0) : '-') + ' | ATR ' + (ind.atrPct !== null ? ind.atrPct.toFixed(3) + '%' : '-')
       + ' | ' + s.reason;
     if (status) status.textContent = live;
@@ -578,7 +741,7 @@
     p.id = 'muse-bot-panel';
     p.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:999999;background:#222;color:#fff;'
       + 'padding:12px;border-radius:10px;font-size:13px;width:250px;max-height:85vh;overflow:auto;box-shadow:0 0 12px #000;';
-    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.1.0</b><br>'
+    p.innerHTML = '<b>🤖 Pocket Demo Bot v1.1.1</b><br>'
       + '<span style="color:#f39c12">ديمو بس — أتمتة الواجهة مخالفة لشروط المنصة وقد تؤدي للحظر.</span><br>'
       + 'الوضع: <select id="muse-mode">'
       + Object.keys(MODES).map(function (k) {
@@ -606,6 +769,7 @@
       + '<button id="muse-start" style="background:#27ae60;color:#fff;padding:8px 14px;border:none;border-radius:6px;margin-top:8px">▶ START</button> '
       + '<button id="muse-stop" style="background:#c0392b;color:#fff;padding:8px 14px;border:none;border-radius:6px">⛔ STOP</button>'
       + '<div id="muse-bot-status" style="margin-top:8px;color:#ccc">مستني START...</div>'
+      + '<div id="muse-bot-price" style="margin-top:4px;font-size:12px;color:#e74c3c">السعر: - | آخر قراءة: لم تُقرأ بعد</div>'
       + '<pre id="muse-bot-log" style="max-height:140px;overflow:auto;font-size:11px;color:#aaa"></pre>';
     document.body.appendChild(p);
     document.getElementById('muse-mode').onchange = function (e) {
@@ -640,7 +804,9 @@
       },
       setConfig: function (patch) { for (var k in patch) CFG[k] = patch[k]; },
       setFilters: function (patch) { for (var k in patch) CFG.filters[k] = patch[k]; },
-      decide: decide, allIndicators: allIndicators,
+      decide: decide, allIndicators: allIndicators, readPrice: readPrice,
+      parsePriceText: parsePriceText, getLastPrice: function () { return lastPrice; },
+      setLastPrice: function (v) { lastPrice = v; lastPriceAt = Date.now(); },
       ema: ema, rsi: rsi, stoch: stoch, macdHist: macdHist, bollinger: bollinger,
       atr: atr, adx: adx, cci: cci, williamsR: williamsR, parabolicSAR: parabolicSAR,
       vwap: vwap, donchian: donchian, requiredCloses: requiredCloses, modes: MODES
