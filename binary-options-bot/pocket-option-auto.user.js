@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pocket Option Demo Auto Trader (human-like clicks)
 // @namespace    https://example.local/pocket-demo-bot
-// @version      1.2.2
+// @version      1.2.3
 // @description  Automated trading on the Pocket Option DEMO account only, by clicking CALL/PUT in the page like a human. No session token, no API, no login data — you log in yourself. For learning/testing on demo only.
 // @match        https://pocketoption.com/*
 // @match        https://*.pocketoption.com/*
@@ -263,6 +263,64 @@
   متعددة، حدود يكتبها المستخدم، السعر من الصفحة فقط، بلا
   مصادر خارجية، بلا fetch، ديمو فقط، بلا SSID/API/كوكيز).
 
+  ============================================================
+  v1.2.3 — إصلاحات من تشخيص v1.2.2 (الفحص 11:34-11:35):
+  الخطاف كان يرى 7 رسائل مصافحة فقط، بلا سعر، بلا أزرار.
+  ============================================================
+  (A) سجل لكل سوكيت: WSProxy يحتفظ بالـ URL وعدد الرسائل
+      والأحداث لكل سوكيت، وتظهر في اللوحة "Sockets: n".
+  (B) خطاف XHR/fetch لـ Engine.IO long-polling (socket.io/EIO)
+      — يفحص أجسام الردود فقط، ولا يفحص أجسام الطلبات أو الكوكيز.
+  (C) محلل Socket.IO يقبل namespace "/ns," وفاصل ثنائي "-"
+      وأحداث 45/46 الثنائية، و updateStream / update_close_value
+      في القائمة البيضاء، والاستخراج لا يشترط اسم حدث.
+  (D) walk() يقبل أرقاماً عارية داخل مصفوفات (["AUDCAD",1.00264])
+      وقيم مصفوفة تحت مفتاح زوج ({"AUDCAD":[1.00264,...]} تأخذ [0])،
+      و wsPlausiblePrice يقبل خانتين عشريتين حين يكون الزوج معروفاً
+      (خانتان لـ XAUUSD/BTCUSD)، و 3-5 غير ذلك.
+  (E) التحقق أن الخطاف مثبّت فعلاً: window.__poHookInstalled +
+      سمة data-hook-installed في الجسر، تُفحص بعد 200ms؛
+      wsHooked لا يُضبط true قبل نجاح الفحص، و CSP المحظور
+      يسجّل خطأ واضحاً بدل الصمت.
+  (F) بحث أزرار معاد كتابته: كل العناصر القابلة للضغط
+      (button, [role=button], a, [onclick], div, span)،
+      داخل iframes من نفس النطاق و shadow roots، رؤية بلا
+      offsetParent (getBoundingClientRect > 4px)، تسميات
+      Call|Buy|Up|Long و Put|Sell|Down|Short بالعربي والإنجليزي،
+      ولون احتياطي يفحص تدرجات backgroundImage أيضاً.
+      التشخيص يطبع أفضل 5 عناصر قابلة للضغط مع نصها ومستطيلها.
+  (G) قراءة الزمن/المبلغ/العائد: قارئ الزمن لا يعود لساعة الحائط
+      (11:33:08) — يقبل فقط حقل مدة بجانب تسمية وقت/مدة،
+      ويرفض قيماً ضمن ±3 ثوانٍ من ساعة الحائط؛ قارئ المبلغ
+      يفضّل الحقل الأقرب لحقل الزمن/داخل نموذج الصفقة؛
+      قارئ العائد يبحث داخل نموذج الصفقة فقط، وإن لم يجد %
+      يرجع null (لا افتراض صامت 0.92) ويسجّل أن الفلتر أعمى.
+  (H) بديل الضغط بالإحداثيات clickAt(x,y) بأحداث اصطناعية
+      (pointerdown/mousedown/pointerup/mouseup/click) — يُستخدم
+      فقط بعد فشل findButton()، وملاحظة في الكود أن الأحداث
+      الاصطناعية isTrusted===false وقد يتجاهلها التطبيق.
+  (I) عدّ الرسائل مرة واحدة فقط: ev.__poSeen يمنع إعادة
+      الفحص عبر addEventListener/onmessage بعد المستمع الداخلي.
+  (J) تشخيص أغنى: URL + عدّادات لكل سوكيت، قائمة iframes
+      بالنطاق وقابلية القراءة، أول رسالة غير مصافحة لكل سوكيت
+      (مفاتيح فقط)، وأفضل 5 عناصر قابلة للضغط. انتظار WebSocket
+      في الفحص الشامل 60 → 120 ثانية.
+  (+) سوكيت خاص بالسكربت: يفتح اتصال Socket.IO خاص به من داخل
+      الصفحة المسجّل دخولها إلى
+      wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket،
+      يوثّق في الذاكرة فقط من document.cookie (session/ssid/uid/
+      isDemo — قراءة فقط، بلا تسجيل قيم، ولا إرسال لأي مكان)،
+      بإطار 42["auth",{...}]، ينتظر successauth بكل أشكاله، ثم
+      يرسل subscribeSymbol/changeSymbol للزوج المختار، ويفك
+      updateStream بصيغتي 42[...] و 451- الثنائية، وينفذ عبر
+      openOrder كبديل فقط عند غياب أزرار DOM. ديمو فقط. أول اختبار
+      حي يسجّل الإطارات الخام (0، 40، successauth، أول
+      updateStream) قبل أي صفقة. أشكال الحمولات غير الموثقة في
+      المصادر تُسجَّل كشكل خام ويبقى ذلك المسار معطّلاً بخط سجل
+      واضح — لا اختراع لصيغ سلكية.
+  كل شيء آخر بلا تغيير (11 استراتيجية، لوحة، حدود يكتبها
+  المستخدم، فحص شامل مدمج، ديمو فقط).
+
   ديمو فقط — أتمتة الواجهة مخالفة لشروط Pocket Option وقد
   تؤدي لحظر الحساب حتى على الديمو. للتعلم والتجربة على
   الديمو فقط، وبمبالغ صغيرة جداً. مفيش أي ضمان ربح.
@@ -337,6 +395,15 @@
   // v1.2.1: عينات أشكال رسائل WebSocket (مفاتيح فقط، بلا قيم) واسم
   // الزوج كما رآه الخطاف داخل الصفحة — للتشخيص في اللوحة.
   var wsDiagSamples = [], wsHookAsset = '';
+  // v1.2.3 (A): سجل السوكيتات حسب الـ URL — {url, msgs, events, firstAt, lastAt}
+  var poSockets = {};
+  // v1.2.3 (E): هل تحققنا فعلاً أن الخطاف مثبّت في سياق الصفحة؟
+  var wsHookVerified = false;
+  // v1.2.3 (H): مستطيل آخر زر وُجد بالمسح العميق (لضغط الإحداثيات).
+  var clickFallbackRect = null; // v1.2.3 (H): آخر مستطيل زر عُثر عليه (لبديل الإحداثيات)
+var lastButtonScan = []; // v1.2.3 (F/J): آخر مسح عميق للعناصر القابلة للنقر
+  // v1.2.3 (own socket): اتصال Socket.IO خاص بالسكربت من داخل الصفحة.
+  var ownSocket = { ws: null, state: 'idle', authed: false, asset: '', ticks: 0, lastTickAt: 0, lastFrameAt: 0, frames: { open: 0, connect: 0, successauth: 0, updateStream: 0 }, authSentAt: 0, subSentAt: 0, orderWaiters: [], frameShapes: {} };
   var closes = [];            // أسعار إغلاق الشموع (15 ثانية)
   var candles = [];           // شموع كاملة {o,h,l,c} — للمؤشرات التي تحتاج High/Low
   var curCandle = null;
@@ -929,6 +996,35 @@
     } else {
       lines += ' — بلا عينة بعد';
     }
+    // v1.2.3 (J): عدّادات كل سوكيت حسب الـ URL + أول رسالة غير
+    // مصافحة لكل سوكيت (مفاتيح فقط) + حالة السوكيت الخاص.
+    if (poSockets) {
+      var sk = Object.keys(poSockets);
+      if (sk.length) {
+        lines += '\nSockets: ' + sk.length;
+        for (var si = 0; si < sk.length; si++) {
+          var so = poSockets[sk[si]];
+          var shortUrl = String(so.url || '').replace(/^wss?:\/\//, '').slice(0, 60);
+          var evParts2 = [];
+          if (so.events) { for (var ek2 in so.events) evParts2.push(ek2 + '×' + so.events[ek2]); }
+          lines += '\n  ' + (si + 1) + ') ' + shortUrl + ' — رسائل: ' + (so.msgs || 0) + (evParts2.length ? ' | أحداث: ' + evParts2.join('، ') : '');
+          if (wsDiagSamples) {
+            for (var sj = 0; sj < wsDiagSamples.length; sj++) {
+              var smp2 = wsDiagSamples[sj];
+              if (smp2.sock === so.url && smp2.keys && smp2.keys.length && smp2.keys.indexOf('sid') === -1) {
+                lines += '\n     أول رسالة غير مصافحة: ' + smp2.keys.join('، ') + (smp2.price !== null && smp2.price !== undefined ? ' — سعر: ' + smp2.price : '');
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    if (ownSocket && ownSocket.state !== 'idle') {
+      lines += '\nسوكيت خاص (ديمو): ' + ownSocket.state + ' | ticks: ' + (ownSocket.ticks || 0)
+        + ' | إطارات: open×' + (ownSocket.frames.open || 0) + ' connect×' + (ownSocket.frames.connect || 0)
+        + ' successauth×' + (ownSocket.frames.successauth || 0) + ' updateStream×' + (ownSocket.frames.updateStream || 0);
+    }
     // v1.2.2: ملخص أحداث Socket.IO (أسماء فقط، بلا قيم)
     if (wsIoEvents && (wsIoEvents.handshake || wsIoEvents.total42 || wsIoEvents.ping)) {
       var evParts = [];
@@ -1282,11 +1378,14 @@
   }
   // v1.2.1: هل الرقم سعر محتمل؟ (3-5 خانات عشرية، 0.1-200)
   // يرفض الرصيد (152280 بلا كسور) والمبلغ (1) والعائد (0.92 بخانتين).
-  function wsPlausiblePrice(v) {
+  // v1.2.3 (D): حين يكون الزوج معروفاً تُقبل خانتان عشريتان
+  // (خانتان لـ XAUUSD/BTCUSD ونحوها)، وإلا 3-5 خانات.
+  function wsPlausiblePrice(v, asset6) {
     var n = wsNum(v);
     if (n === null || n < 0.1 || n > 200) return null;
     var dec = priceDecimals(n);
-    if (dec < 3 || dec > 5) return null;
+    var minDec = asset6 ? 2 : 3;
+    if (dec < minDec || dec > 5) return null;
     return n;
   }
   // v1.2.1: أزل أغلفة بروتوكولات النقل قبل فك JSON:
@@ -1294,12 +1393,14 @@
   // رقم عادي مثل "1.00264" لا يبدأ بـ [ أو { فلا يُمس.
   function normalizeWsText(t) {
     var s = String(t).trim();
-    var m = s.match(/^(\d+|a)([\[{][\s\S]*)$/);
+    // v1.2.3 (C): أزل بادئة Engine.IO/Socket.IO مع namespace
+    // اختياري "/ns," وفاصل ثنائي "-" اختياري: 42/ns,[...] و 451-[...].
+    var m = s.match(/^(\d+|a)(?:\/[^,]+,)?-?([\[{][\s\S]*)$/);
     if (m) return m[2];
     return s;
   }
   // v1.2.2: أسماء أحداث Socket.IO التي تحمل سعراً (للزوج الحالي).
-  var PRICE_EVENT_NAMES = ['price', 'quote', 'quotes', 'tick', 'ticks', 'candle', 'candles', 'update', 'price_update', 'priceupdate', 'asset', 'assets', 'asset_update', 'chart', 'rate', 'rates', 'lastprice', 'liveprice', 'stream'];
+  var PRICE_EVENT_NAMES = ['price', 'quote', 'quotes', 'tick', 'ticks', 'candle', 'candles', 'update', 'price_update', 'priceupdate', 'asset', 'assets', 'asset_update', 'chart', 'rate', 'rates', 'lastprice', 'liveprice', 'stream', 'updatestream', 'update_stream', 'update_close_value', 'updateclosevalue', 'successauth', 'updateassets', 'updatehistorynewfast'];
   // v1.2.2: تحليل رسالة Socket.IO/Engine.IO إلى نوعها وحدثها وحمولتها.
   // ترجع {kind, event, payload, data} حيث kind واحد من:
   // 'handshake' (0{...})، 'ping' ("2")، 'pong' ("3")، 'connect' (40)،
@@ -1328,18 +1429,26 @@
       } catch (e) {}
       return { kind: 'data', event: '', payload: null };
     }
-    var m = s.match(/^(\d+)([\[{][\s\S]*)$/);
+    // v1.2.3 (C): regex يقبل namespace اختياري "/ns," وفاصل ثنائي "-"
+    // اختياري: 42/ns,["ev",...] و 451-["ev",...] (45 = حدث ثنائي،
+    // 46 = إقرار ثنائي، والرقم الثالث بعد 45/46 = عدد المرفقات).
+    var m = s.match(/^(\d+)(?:\/[^,]+,)?(-)?([\[{][\s\S]*)$/);
     if (m) {
-      var code = m[1], body = m[2], parsed = null;
+      var codeRaw = m[1], body = m[3], parsed = null, binaryCount = 0;
+      var code = codeRaw;
+      if (codeRaw.length === 3 && (codeRaw.slice(0, 2) === '45' || codeRaw.slice(0, 2) === '46')) {
+        code = codeRaw.slice(0, 2);
+        binaryCount = parseInt(codeRaw[2], 10) || 0;
+      }
       try { parsed = JSON.parse(body); } catch (e) { parsed = null; }
       if (code === '0') return { kind: 'handshake', event: '', payload: parsed };
       if (code === '40') return { kind: 'connect', event: '', payload: parsed };
       if (code === '41') return { kind: 'disconnect', event: '', payload: null };
-      if (code === '42' || code === '2') {
-        if (Array.isArray(parsed)) return { kind: 'event', event: (typeof parsed[0] === 'string' ? parsed[0] : ''), payload: parsed.length > 1 ? parsed[1] : null, data: parsed };
-        return { kind: 'event', event: '', payload: parsed };
+      if (code === '42' || code === '45' || code === '2') {
+        if (Array.isArray(parsed)) return { kind: 'event', event: (typeof parsed[0] === 'string' ? parsed[0] : ''), payload: parsed.length > 1 ? parsed[1] : null, data: parsed, binary: (code === '45' || binaryCount > 0 || !!m[2]) };
+        return { kind: 'event', event: '', payload: parsed, binary: (code === '45') };
       }
-      if (code === '43' || code === '3') return { kind: 'ack', event: '', payload: parsed };
+      if (code === '43' || code === '46' || code === '3') return { kind: 'ack', event: '', payload: parsed, binary: (code === '46') };
       return { kind: 'data', event: '', payload: parsed };
     }
     if (s.charAt(0) === '{' || s.charAt(0) === '[') {
@@ -1398,13 +1507,18 @@
   function extractWsPrice(data, asset6) {
     var target = normWsSymbol(asset6 || '');
     var found = null;
+    // v1.2.3 (D): فك قيمة قد تكون مصفوفة: {"AUDCAD":[1.00264,...]} تأخذ [0].
+    function wsFirstVal(v) {
+      if (Array.isArray(v)) return v.length ? wsFirstVal(v[0]) : null;
+      return v;
+    }
     function priceFromObj(obj, sym) {
       for (var i = 0; i < WS_PRICE_KEYS.length; i++) {
         var k = WS_PRICE_KEYS[i];
         if (obj[k] !== undefined) {
           // الزوج معروف: أي رقم سعر مقبول. الزوج غير معروف: فقط
           // سعر محتمل (3-5 خانات عشرية) حتى لا نلتقط عائداً أو مبلغاً.
-          var p = target ? wsNum(obj[k]) : wsPlausiblePrice(obj[k]);
+          var p = target ? wsNum(wsFirstVal(obj[k])) : wsPlausiblePrice(wsFirstVal(obj[k]), target);
           if (p !== null) return { price: p, asset: sym || target };
         }
       }
@@ -1412,6 +1526,12 @@
     }
     function walk(node, ctxSym, depth) {
       if (found || depth > 6) return;
+      if (typeof node === 'number') {
+        // v1.2.3 (D): رقم عارٍ داخل مصفوفة، مثل ["AUDCAD", 1.00264].
+        var pn = ctxSym ? wsNum(node) : wsPlausiblePrice(node, ctxSym);
+        if (pn !== null) found = { price: pn, asset: ctxSym || '' };
+        return;
+      }
       if (typeof node === 'string') {
         // v1.2.2: رسائل Socket.IO أولاً — المصافحة "0{...}" و ping
         // "2" لا سعر فيها إطلاقاً، فتُتجاهل فوراً. حدث "42[...]"
@@ -1424,7 +1544,7 @@
         if (sio.kind === 'handshake' || sio.kind === 'ping' || sio.kind === 'pong' || sio.kind === 'connect' || sio.kind === 'disconnect') return;
         if (sio.kind === 'event') {
           var evName = String(sio.event || '').toLowerCase();
-          if (PRICE_EVENT_NAMES.indexOf(evName) !== -1) {
+          if (true) { // v1.2.3 (C): لا قائمة بيضاء لأسماء الأحداث في الاستخراج — أي حدث 42/451- يُفحص
             var psym = '';
             if (sio.payload && typeof sio.payload === 'object' && !Array.isArray(sio.payload)) {
               var sk2 = ['symbol', 'asset', 'pair', 'instrument', 'code', 'name', 'ticker'];
@@ -1434,7 +1554,7 @@
             }
             if (target && psym && psym !== target) return; // حدث سعر لزوج آخر
             if (target && psym === target) { walk(sio.payload, ctxSym, depth + 1); return; }
-            var r2 = extractWsPrice(sio.payload, '');
+            var r2 = extractWsPrice(sio.payload, target);
             if (r2) { found = r2; return; }
             return;
           }
@@ -1445,7 +1565,7 @@
         var t = normalizeWsText(node);
         // نص رقمي عارٍ: "1.00264" — سعر محتمل إذا كان الزوج مجهولاً
         if (!target) {
-          var bare = wsPlausiblePrice(t);
+          var bare = wsPlausiblePrice(t, ctxSym);
           if (bare !== null) { found = { price: bare, asset: '' }; return; }
         }
         if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
@@ -1454,7 +1574,17 @@
         return;
       }
       if (Array.isArray(node)) {
-        for (var i = 0; i < node.length; i++) walk(node[i], ctxSym, depth + 1);
+        // v1.2.3 (D): ["AUDCAD", 1.00264] — العنصر النصي يحدد رمز
+        // العناصر الرقمية التالية في نفس المصفوفة.
+        var arrSym = ctxSym;
+        for (var i = 0; i < node.length; i++) {
+          if (typeof node[i] === 'string') {
+            var ns = normWsSymbol(node[i]);
+            if (ns.length === 6) arrSym = ns;
+          }
+          walk(node[i], arrSym, depth + 1);
+          if (found) return;
+        }
         return;
       }
       if (!node || typeof node !== 'object') return;
@@ -1470,10 +1600,10 @@
       for (k = 0; k < keys.length; k++) {
         var nk = normWsSymbol(keys[k]);
         if (target && nk === target) {
-          pv = wsNum(node[keys[k]]);
+          pv = wsNum(wsFirstVal(node[keys[k]]));
           if (pv !== null) { found = { price: pv, asset: target }; return; }
         } else if (!target && nk.length === 6) {
-          pv = wsPlausiblePrice(node[keys[k]]);
+          pv = wsPlausiblePrice(wsFirstVal(node[keys[k]]), nk);
           if (pv !== null) { found = { price: pv, asset: nk }; return; }
         }
       }
@@ -1511,6 +1641,23 @@
   function wsHookPageFn() {
     try {
       var BRIDGE_ID = 'muse-po-price';
+      // v1.2.3 (A): سجل السوكيتات حسب الـ URL — {url, msgs, events, firstAt, lastAt}.
+      // قبل ذلك كان WSProxy يتجاهل الـ URL تماماً، فلا نعرف أي سوكيت
+      // يحمل السعر وأي سوكيت مجرد مصافحة.
+      var PO_SOCKETS = {};
+      function sockKey(url) { return String(url || '(بلا URL)'); }
+      function sockEntry(url) {
+        var k = sockKey(url);
+        if (!PO_SOCKETS[k]) PO_SOCKETS[k] = { url: k, msgs: 0, events: {}, firstAt: Date.now(), lastAt: 0 };
+        return PO_SOCKETS[k];
+      }
+      function publishSockets() {
+        try {
+          var b = document.getElementById(BRIDGE_ID);
+          if (b) { b.setAttribute('data-sockets', JSON.stringify(PO_SOCKETS)); }
+          try { window.__poSockets = PO_SOCKETS; } catch (e) {}
+        } catch (e) {}
+      }
       var PRICE_KEYS = ['price', 'close', 'last', 'lastprice', 'last_price', 'bid', 'ask', 'rate', 'quote', 'value', 'currentprice', 'current_price', 'open', 'current', 'spot', 'mid'];
       function normSym(s) { try { return String(s).toUpperCase().replace(/[^A-Z]/g, '').replace(/OTC$/, ''); } catch (e) { return ''; } }
       function numVal(v) {
@@ -1573,21 +1720,29 @@
         return false;
       }
       function decOf(v) { var s = String(v); return s.indexOf('.') === -1 ? 0 : s.split('.')[1].length; }
-      function plausible(v) {
+      // v1.2.3 (D): حين يكون الزوج معروفاً تُقبل خانتان عشريتان.
+      function plausible(v, asset6) {
         var n = numVal(v);
         if (n === null || n < 0.1 || n > 200) return null;
         var d = decOf(n);
-        if (d < 3 || d > 5) return null;
+        var minDec = asset6 ? 2 : 3;
+        if (d < minDec || d > 5) return null;
         return n;
+      }
+      // v1.2.3 (D): فك قيمة قد تكون مصفوفة: {"AUDCAD":[1.00264,...]} تأخذ [0].
+      function firstVal(v) {
+        if (Array.isArray(v)) return v.length ? firstVal(v[0]) : null;
+        return v;
       }
       function stripPrefix(t) {
         var s = String(t).trim();
-        var m = s.match(/^(\d+|a)([\[{][\s\S]*)$/);
+        // v1.2.3 (C): namespace "/ns," وفاصل ثنائي "-" اختياريان.
+        var m = s.match(/^(\d+|a)(?:\/[^,]+,)?-?([\[{][\s\S]*)$/);
         if (m) return m[2];
         return s;
       }
       // v1.2.2: نسخة مستقلة من parseSocketIoMessage داخل سياق الصفحة.
-      var PRICE_EVENTS = ['price', 'quote', 'quotes', 'tick', 'ticks', 'candle', 'candles', 'update', 'price_update', 'priceupdate', 'asset', 'assets', 'asset_update', 'chart', 'rate', 'rates', 'lastprice', 'liveprice', 'stream'];
+      var PRICE_EVENTS = ['price', 'quote', 'quotes', 'tick', 'ticks', 'candle', 'candles', 'update', 'price_update', 'priceupdate', 'asset', 'assets', 'asset_update', 'chart', 'rate', 'rates', 'lastprice', 'liveprice', 'stream', 'updatestream', 'update_stream', 'update_close_value', 'updateclosevalue', 'successauth', 'updateassets', 'updatehistorynewfast'];
       function parseSio(raw) {
         if (raw === null || raw === undefined) return { kind: 'unknown', event: '', payload: null };
         if (typeof raw !== 'string') return { kind: 'data', event: '', payload: raw };
@@ -1605,18 +1760,25 @@
           } catch (e) {}
           return { kind: 'data', event: '', payload: null };
         }
-        var m = s.match(/^(\d+)([\[{][\s\S]*)$/);
+        // v1.2.3 (C): namespace "/ns," وفاصل ثنائي "-" اختياريان؛
+        // 45 = حدث ثنائي، 46 = إقرار ثنائي (الرقم الثالث = المرفقات).
+        var m = s.match(/^(\d+)(?:\/[^,]+,)?(-)?([\[{][\s\S]*)$/);
         if (m) {
-          var code = m[1], body = m[2], parsed = null;
+          var codeRaw = m[1], body = m[3], parsed = null, binaryCount = 0;
+          var code = codeRaw;
+          if (codeRaw.length === 3 && (codeRaw.slice(0, 2) === '45' || codeRaw.slice(0, 2) === '46')) {
+            code = codeRaw.slice(0, 2);
+            binaryCount = parseInt(codeRaw[2], 10) || 0;
+          }
           try { parsed = JSON.parse(body); } catch (e) { parsed = null; }
           if (code === '0') return { kind: 'handshake', event: '', payload: parsed };
           if (code === '40') return { kind: 'connect', event: '', payload: parsed };
           if (code === '41') return { kind: 'disconnect', event: '', payload: null };
-          if (code === '42' || code === '2') {
-            if (Array.isArray(parsed)) return { kind: 'event', event: (typeof parsed[0] === 'string' ? parsed[0] : ''), payload: parsed.length > 1 ? parsed[1] : null, data: parsed };
-            return { kind: 'event', event: '', payload: parsed };
+          if (code === '42' || code === '45' || code === '2') {
+            if (Array.isArray(parsed)) return { kind: 'event', event: (typeof parsed[0] === 'string' ? parsed[0] : ''), payload: parsed.length > 1 ? parsed[1] : null, data: parsed, binary: (code === '45' || binaryCount > 0 || !!m[2]) };
+            return { kind: 'event', event: '', payload: parsed, binary: (code === '45') };
           }
-          if (code === '43' || code === '3') return { kind: 'ack', event: '', payload: parsed };
+          if (code === '43' || code === '46' || code === '3') return { kind: 'ack', event: '', payload: parsed, binary: (code === '46') };
           return { kind: 'data', event: '', payload: parsed };
         }
         if (s.charAt(0) === '{' || s.charAt(0) === '[') { try { return { kind: 'data', event: '', payload: JSON.parse(s) }; } catch (e) { return { kind: 'text', event: '', payload: null }; } }
@@ -1661,6 +1823,12 @@
       }
       function extract(data, target, depth, ctxSym) {
         if (depth > 6) return null;
+        if (typeof data === 'number') {
+          // v1.2.3 (D): رقم عارٍ داخل مصفوفة، مثل ["AUDCAD", 1.00264].
+          var pn2 = target ? numVal(data) : plausible(data, ctxSym);
+          if (pn2 !== null) return { price: pn2, asset: target || ctxSym || '' };
+          return null;
+        }
         if (typeof data === 'string') {
           // v1.2.2: Socket.IO أولاً — المصافحة و ping بلا سعر.
           // حدث سعر يعني أن حمولته سعر للزوج الحالي (أي زوج إن
@@ -1669,7 +1837,7 @@
           if (sio.kind === 'handshake' || sio.kind === 'ping' || sio.kind === 'pong' || sio.kind === 'connect' || sio.kind === 'disconnect') return null;
           if (sio.kind === 'event') {
             var evName = String(sio.event || '').toLowerCase();
-            if (PRICE_EVENTS.indexOf(evName) !== -1) {
+            if (true) { // v1.2.3 (C): لا قائمة بيضاء لأسماء الأحداث في الاستخراج — أي حدث 42/451- يُفحص
               var psym = '';
               if (sio.payload && typeof sio.payload === 'object' && !Array.isArray(sio.payload)) {
                 var sk2 = ['symbol', 'asset', 'pair', 'instrument', 'code', 'name', 'ticker'];
@@ -1679,7 +1847,7 @@
               }
               if (target && psym && psym !== target) return null;
               if (target && psym === target) return extract(sio.payload, target, depth + 1, ctxSym);
-              return extract(sio.payload, '', depth + 1, '');
+              return extract(sio.payload, target, depth + 1, '');
             }
             if (sio.payload !== null && sio.payload !== undefined) return extract(sio.payload, target, depth + 1, ctxSym);
             return null;
@@ -1687,7 +1855,7 @@
           if (sio.kind === 'data' && sio.payload !== null && typeof sio.payload === 'object') return extract(sio.payload, target, depth + 1, ctxSym);
           var t = stripPrefix(data);
           if (!target) {
-            var bare = plausible(t);
+            var bare = plausible(t, ctxSym);
             if (bare !== null) return { price: bare, asset: '' };
           }
           if (t && (t.charAt(0) === '{' || t.charAt(0) === '[')) {
@@ -1696,7 +1864,12 @@
           return null;
         }
         if (Array.isArray(data)) {
-          for (var i = 0; i < data.length; i++) { var r = extract(data[i], target, depth + 1, ctxSym); if (r) return r; }
+          // v1.2.3 (D): ["AUDCAD", 1.00264] — النص يحدد رمز الأرقام بعده.
+          var arrSym2 = ctxSym;
+          for (var i = 0; i < data.length; i++) {
+            if (typeof data[i] === 'string') { var ns2 = normSym(data[i]); if (ns2.length === 6) arrSym2 = ns2; }
+            var r = extract(data[i], target, depth + 1, arrSym2); if (r) return r;
+          }
           return null;
         }
         if (!data || typeof data !== 'object') return null;
@@ -1707,17 +1880,17 @@
         for (k = 0; k < keys.length; k++) {
           var nk = normSym(keys[k]);
           if (target && nk === target) {
-            var pv = numVal(data[keys[k]]);
+            var pv = numVal(firstVal(data[keys[k]]));
             if (pv !== null) return { price: pv, asset: target };
           } else if (!target && nk.length === 6) {
-            var pv2 = plausible(data[keys[k]]);
+            var pv2 = plausible(firstVal(data[keys[k]]), nk);
             if (pv2 !== null) return { price: pv2, asset: nk };
           }
         }
         if (!target || sym === target) {
           for (var p = 0; p < PRICE_KEYS.length; p++) {
             if (data[PRICE_KEYS[p]] !== undefined) {
-              var q = target ? numVal(data[PRICE_KEYS[p]]) : plausible(data[PRICE_KEYS[p]]);
+              var q = target ? numVal(firstVal(data[PRICE_KEYS[p]])) : plausible(firstVal(data[PRICE_KEYS[p]]), target);
               if (q !== null) return { price: q, asset: sym };
             }
           }
@@ -1735,7 +1908,7 @@
       // أشكال مختلفة — تُنشر في الجسر data-sample ليقرأها السكربت
       // ويعرضها في اللوحة. الرسائل الحساسة تُسجَّل كعلامة فقط.
       var samples = [];
-      function recordSample(raw) {
+      function recordSample(raw, sockKeyArg) {
         try {
           if (samples.length >= 3) return;
           var k = keysOf(raw, 0);
@@ -1745,7 +1918,7 @@
           }
           var pr = null;
           try { var rr = extract(raw, '', 0, ''); if (rr) pr = rr.price; } catch (e) {}
-          samples.push({ keys: k.keys, sensitive: k.sensitive, price: pr });
+          samples.push({ keys: k.keys, sensitive: k.sensitive, price: pr, sock: sockKeyArg || '' });
           var b = document.getElementById(BRIDGE_ID);
           if (b) {
             try { b.setAttribute('data-sample', JSON.stringify(samples)); } catch (e) {}
@@ -1774,9 +1947,17 @@
       // v1.2.1: handleText هو الفحص الفعلي (يُعدّ الرسالة مرة واحدة).
       // inspect يفك ترميز الإطارات الثنائية أولاً (ArrayBuffer/Blob)
       // ثم يمرر النص لـ handleText — فلا تُحسب الرسالة مرتين.
-      function handleText(raw) {
+      // v1.2.3 (A/I): handleText تأخذ مفتاح السوكيت؛ تُحدَّث عدّادات
+      // ذلك السوكيت، وتُحسب الرسالة مرة واحدة فقط (انظر inspectEvent).
+      function handleText(raw, sockKeyArg) {
         try {
           seen++;
+          if (sockKeyArg) {
+            try {
+              var se = sockEntry(sockKeyArg);
+              se.msgs++; se.lastAt = Date.now();
+            } catch (e0) {}
+          }
           // v1.2.2: سجّل نوع رسالة Socket.IO (اسم الحدث فقط، بلا
           // قيم) وانشر العدّادات في الجسر data-io-events.
           try {
@@ -1789,32 +1970,45 @@
               ioEvents.total42++;
               var evn = String(sio.event || '(بلا اسم)');
               ioEvents.events[evn] = (ioEvents.events[evn] || 0) + 1;
+              if (sockKeyArg) { try { var se2 = sockEntry(sockKeyArg); se2.events[evn] = (se2.events[evn] || 0) + 1; } catch (e4) {} }
             }
             var bb = document.getElementById(BRIDGE_ID);
             if (bb) { try { bb.setAttribute('data-io-events', JSON.stringify(ioEvents)); } catch (e2) {} }
+            try { publishSockets(); } catch (e5) {}
           } catch (e3) {}
           var b = document.getElementById(BRIDGE_ID);
           if (b) b.setAttribute('data-msgs', String(seen));
-          recordSample(raw);
+          recordSample(raw, sockKeyArg);
           var r = extract(raw, assetNow(), 0, '');
           if (r) publish(r.price, r.asset);
         } catch (e) {}
       }
-      function inspect(raw) {
+      function inspect(raw, sockKeyArg) {
         try {
           if (typeof ArrayBuffer !== 'undefined' && raw instanceof ArrayBuffer) {
-            try { handleText(new TextDecoder('utf-8').decode(raw)); } catch (e) {}
+            try { handleText(new TextDecoder('utf-8').decode(raw), sockKeyArg); } catch (e) {}
             return;
           }
           if (typeof Blob !== 'undefined' && raw instanceof Blob) {
             try {
               var fr = new FileReader();
-              fr.onload = function () { try { handleText(fr.result); } catch (e) {} };
+              fr.onload = function () { try { handleText(fr.result, sockKeyArg); } catch (e) {} };
               fr.readAsText(raw);
             } catch (e) {}
             return;
           }
-          handleText(raw);
+          handleText(raw, sockKeyArg);
+        } catch (e) {}
+      }
+      // v1.2.3 (I): عدّ كل رسالة مرة واحدة فقط. الرسالة الواحدة قد
+      // تمر بالمستمع الداخلي للخطاف ثم بمستمع الصفحة نفسه
+      // (addEventListener/onmessage) — ev.__poSeen يمنع إعادة فحصها.
+      function inspectEvent(ev, sockKeyArg) {
+        try {
+          if (!ev) return;
+          if (ev.__poSeen) return;
+          ev.__poSeen = true;
+          inspect(ev.data, sockKeyArg);
         } catch (e) {}
       }
       // (2) غلّف addEventListener: مستمعو 'message' الجدد يُغلَّفون.
@@ -1825,7 +2019,7 @@
         WebSocket.prototype.addEventListener = function (type, listener, opts) {
           if (type === 'message' && typeof listener === 'function' && !listener.__poInternal) {
             var self = this;
-            var wrapped = function (ev) { try { inspect(ev.data); } catch (e) {} try { return listener.call(self, ev); } catch (e) {} };
+            var wrapped = function (ev) { try { if (!self.__poInternalAttached) inspectEvent(ev, self.__poSockKey); } catch (e) {} try { return listener.call(self, ev); } catch (e) {} };
             return origAdd.call(this, type, wrapped, opts);
           }
           return origAdd.call(this, type, listener, opts);
@@ -1839,7 +2033,7 @@
           set: function (fn) {
             var self = this;
             if (typeof fn === 'function') {
-              this.__poOnMsg = function (ev) { try { inspect(ev.data); } catch (e) {} try { return fn.call(self, ev); } catch (e) {} };
+              this.__poOnMsg = function (ev) { try { if (!self.__poInternalAttached) inspectEvent(ev, self.__poSockKey); } catch (e) {} try { return fn.call(self, ev); } catch (e) {} };
             } else { this.__poOnMsg = fn; }
           }
         });
@@ -1849,17 +2043,73 @@
         var OrigWS = window.WebSocket;
         function WSProxy(url, protocols) {
           var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+          // v1.2.3 (A): سجّل الـ URL — كان يُتجاهل تماماً قبل ذلك.
+          var skey = sockKey(url);
+          try { sockEntry(skey); } catch (e) {}
+          try { ws.__poSockKey = skey; ws.__poInternalAttached = true; } catch (e) {}
           try {
-            var internal = function (ev) { try { inspect(ev.data); } catch (e) {} };
+            var internal = function (ev) { try { inspectEvent(ev, skey); } catch (e) {} };
             internal.__poInternal = true;
             ws.addEventListener('message', internal);
           } catch (e) {}
+          try { publishSockets(); } catch (e) {}
           return ws;
         }
         WSProxy.prototype = OrigWS.prototype;
         WSProxy.CONNECTING = OrigWS.CONNECTING; WSProxy.OPEN = OrigWS.OPEN;
         WSProxy.CLOSING = OrigWS.CLOSING; WSProxy.CLOSED = OrigWS.CLOSED;
         window.WebSocket = WSProxy;
+      } catch (e) {}
+      // v1.2.3 (B): خطاف XHR/fetch لـ Engine.IO long-polling —
+      // سعر المنصة قد يصل عبر polling لا عبر WebSocket. نفحص
+      // أجسام الردود فقط حين يطابق الـ URL /socket\.io|EIO=/،
+      // ولا نفحص أجسام الطلبات أو الكوكيز إطلاقاً.
+      try {
+        var OrigXHRopen = XMLHttpRequest.prototype.open;
+        var OrigXHRsend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function (method, url) {
+          try { this.__poUrl = String(url || ''); } catch (e) {}
+          return OrigXHRopen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function () {
+          var self = this;
+          try {
+            self.addEventListener('load', function () {
+              try {
+                var u = self.__poUrl || '';
+                if (!/socket\.io|EIO=/.test(u)) return;
+                var txt = (typeof self.responseText === 'string') ? self.responseText : '';
+                if (txt) inspect(txt, 'xhr:' + u);
+              } catch (e) {}
+            });
+          } catch (e) {}
+          return OrigXHRsend.apply(this, arguments);
+        };
+      } catch (e) {}
+      try {
+        if (typeof window.fetch === 'function') {
+          var origFetch = window.fetch;
+          window.fetch = function (input, init) {
+            var u = '';
+            try { u = typeof input === 'string' ? input : (input && input.url ? input.url : ''); } catch (e) {}
+            return origFetch.apply(this, arguments).then(function (resp) {
+              try {
+                if (/socket\.io|EIO=/.test(u) && resp && typeof resp.clone === 'function') {
+                  resp.clone().text().then(function (txt) { try { if (txt) inspect(txt, 'fetch:' + u); } catch (e) {} }).catch(function () {});
+                }
+              } catch (e) {}
+              return resp;
+            });
+          };
+        }
+      } catch (e) {}
+      // v1.2.3 (E): علامة أن الخطاف مثبّت فعلاً — بعد نجاح التغليف
+      // كله. يفحصها السكربت بعد 200ms عبر سمة الجسر + علامة النافذة.
+      try {
+        window.__poHookInstalled = true;
+        window.__poHookInstalledAt = Date.now();
+        var bb0 = document.getElementById(BRIDGE_ID);
+        if (bb0) bb0.setAttribute('data-hook-installed', '1');
       } catch (e) {}
     } catch (e) {}
   }
@@ -1887,8 +2137,25 @@
       s.textContent = '(' + wsHookPageFn.toString() + ')();';
       (doc.head || root).appendChild(s);
       if (s.parentNode) s.parentNode.removeChild(s);
-      wsHooked = true; wsHookAt = Date.now();
-      logLine('🔌 خطاف WebSocket مثبّت — بيستمع لرسائل سوكيت المنصة نفسها');
+      // v1.2.3 (E): لا نضبط wsHooked=true قبل التحقق — نفحص بعد
+      // 200ms إن كان الخطاف مثبّتاً فعلاً (سمة الجسر + علامة النافذة).
+      // CSP قد يحظر السكربت المضمّن بصمت؛ عندها نسجّل خطأ واضحاً
+      // بدل أن ندّعي أن الخطاف مثبّت.
+      setTimeout(function () {
+        try {
+          var b2 = doc.getElementById('muse-po-price');
+          var ok = false;
+          try { ok = !!(b2 && b2.getAttribute('data-hook-installed') === '1'); } catch (e2) {}
+          if (!ok) { try { ok = !!(typeof window !== 'undefined' && window.__poHookInstalled); } catch (e3) {} }
+          if (ok) {
+            wsHooked = true; wsHookVerified = true; wsHookAt = Date.now();
+            logLine('🔌 خطاف WebSocket مثبّت ومتحقق منه — بيستمع لرسائل سوكيت المنصة نفسها');
+          } else {
+            wsHooked = false; wsHookVerified = false;
+            logLine('❌ خطاف WebSocket فشل في التثبيت — غالباً CSP حظر السكربت المضمّن؛ سعر WebSocket غير متاح، والقراءة من DOM فقط');
+          }
+        } catch (e4) { wsHooked = false; }
+      }, 200);
     } catch (e) { /* الحقن فشل: نكمل بقراءة DOM فقط */ }
   }
   // مزامنة عدّاد رسائل الخطاف وعينات أشكال الرسائل إلى متغيرات
@@ -1905,6 +2172,10 @@
       var ioEv = b.getAttribute('data-io-events') || '';
       if (ioEv) {
         try { var parsedIo = JSON.parse(ioEv); if (parsedIo && typeof parsedIo === 'object') wsIoEvents = parsedIo; } catch (e) {}
+      }
+      var socks = b.getAttribute('data-sockets') || '';
+      if (socks) {
+        try { var parsedS = JSON.parse(socks); if (parsedS && typeof parsedS === 'object') poSockets = parsedS; } catch (e) {}
       }
       var smp = b.getAttribute('data-sample') || '';
       if (smp) {
@@ -1937,48 +2208,164 @@
     } catch (e) { /* تجاهل */ }
     return null;
   }
+  // v1.2.3 (G): حاوية نموذج التداول — أول form فيه input، وإلا
+  // أقرب حاوية مشتركة لحقلي الإدخال. تُستخدم لقراءة العائد والمبلغ
+  // من داخل النموذج فقط، لا من الصفحة كلها.
+  function findTradeFormContainer() {
+    try {
+      var forms = document.querySelectorAll('form');
+      for (var i = 0; i < forms.length; i++) {
+        if (forms[i].querySelector('input')) return forms[i];
+      }
+      var inputs = document.querySelectorAll('input');
+      if (inputs.length >= 2) {
+        var a = inputs[0], b = inputs[1], p = a.parentElement;
+        while (p && !p.contains(b)) p = p.parentElement;
+        if (p) return p;
+      }
+      return null;
+    } catch (e) { return null; }
+  }
   function readPayout() {
-    var m = document.body.innerText.match(/(\d{1,3})\s*%/);
-    return m ? parseInt(m[1], 10) / 100 : 0.92;
+    // v1.2.3 (G): ابحث فقط داخل نموذج التداول — أول % في الصفحة
+    // قد يكون من أي مكان. إن لم توجد % أرجع null، لا افتراض صامت
+    // 0.92؛ وعلى المتصل أن يسجّل أن فلتر العائد أعمى.
+    try {
+      var c = findTradeFormContainer();
+      if (!c) return null;
+      var t = c.innerText || '';
+      var m = t.match(/(\d{1,3})\s*%/);
+      return m ? parseInt(m[1], 10) / 100 : null;
+    } catch (e) { return null; }
   }
   function isDemo() { return /Demo/i.test(document.body.innerText); }
   // v1.2.2: بحث موسّع عن زر CALL/PUT — بالنص أولاً، ثم
   // aria-label / title / role=button، ثم بلون الخلفية (أخضر =
   // CALL، أحمر = PUT)، لأن أزرار المنصة قد تكون بلا نص مقروء
   // (أيقونات/Canvas). ترجع {el, method, text}.
+  // v1.2.3 (F): مسح عميق لكل العناصر القابلة للنقر — button و
+  // [role=button] و a و [onclick] و div و span — في الصفحة وفي
+  // الـ iframes من نفس المصدر وجذور الظل. الرؤية بدون offsetParent
+  // (العناصر position:fixed لها offsetParent null) بل عبر
+  // getBoundingClientRect (عرض/ارتفاع > 4) و display/visibility.
+  function deepScanClickables() {
+    var out = [];
+    function scanRoot(root) {
+      if (!root) return;
+      var els;
+      try { els = root.querySelectorAll('button, [role="button"], a, [onclick], div, span'); } catch (e) { return; }
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        try {
+          var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+          var w = rect ? rect.width : 0, h = rect ? rect.height : 0;
+          if (w <= 4 || h <= 4) continue;
+          var style = null;
+          try { style = window.getComputedStyle ? getComputedStyle(el) : null; } catch (e2) {}
+          if (style && (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse')) continue;
+          var txt = ((el.textContent || '').trim().replace(/\s+/g, ' ') || '').slice(0, 40);
+          var aria = (((el.getAttribute && el.getAttribute('aria-label')) || '') + ' ' + ((el.getAttribute && el.getAttribute('title')) || '')).trim();
+          out.push({
+            el: el, text: txt, aria: aria,
+            rect: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(w), h: Math.round(h) },
+            bg: style ? (style.backgroundColor || '') : '',
+            bgImg: style ? (style.backgroundImage || '') : '',
+            cls: (el.className || '').toString().slice(0, 80)
+          });
+        } catch (e3) {}
+      }
+      try {
+        var all = root.querySelectorAll('*');
+        for (var j = 0; j < all.length; j++) { try { if (all[j].shadowRoot) scanRoot(all[j].shadowRoot); } catch (e4) {} }
+      } catch (e5) {}
+      try {
+        var frs = root.querySelectorAll ? root.querySelectorAll('iframe') : [];
+        for (var k = 0; k < frs.length; k++) { try { if (frs[k].contentDocument) scanRoot(frs[k].contentDocument); } catch (e6) {} }
+      } catch (e7) {}
+    }
+    scanRoot(document);
+    return out;
+  }
+  // v1.2.3 (F): درجة اللون — فرق قناة اللون من backgroundColor
+  // وكل مواضع اللون في backgroundImage (التدرجات)، لا backgroundColor
+  // وحدها. موجبة تعني اللون المطلوب هو الغالب.
+  function colorScore(item, wantGreen) {
+    var best = -999;
+    var src2 = (item.bg || '') + ' ' + (item.bgImg || '');
+    var m = src2.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/g) || [];
+    for (var i = 0; i < m.length; i++) {
+      var p = m[i].match(/(\d+),\s*(\d+),\s*(\d+)/);
+      if (!p) continue;
+      var r = +p[1], g = +p[2];
+      var s = wantGreen ? (g - r) : (r - g);
+      if (s > best) best = s;
+    }
+    var names = (item.bg + ' ' + item.bgImg + ' ' + item.cls).toLowerCase();
+    if (wantGreen && /green|success|#0[0-9a-f]a|#00c853|#2ecc71|#27ae60|#16a34a|#22c55e/.test(names)) best = Math.max(best, 60);
+    if (!wantGreen && /red|danger|#e74c3c|#c0392b|#ff5252|#e53935|#ef4444|#dc2626/.test(names)) best = Math.max(best, 60);
+    return best;
+  }
   function findButtonWithMethod(label) {
     var re = new RegExp(label, 'i');
-    var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-    var i, b;
-    for (i = 0; i < btns.length; i++) {
-      b = btns[i];
-      if (b.offsetParent && re.test(b.textContent || '')) return { el: b, method: 'نص الزر', text: (b.textContent || '').trim().slice(0, 30) };
-    }
-    var els = Array.prototype.slice.call(document.querySelectorAll('[aria-label], [title], [role="button"]'));
-    for (i = 0; i < els.length; i++) {
-      var el = els[i];
-      var txt = (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.textContent || '');
-      if (el.offsetParent && re.test(txt)) return { el: el, method: 'aria-label/title', text: txt.trim().slice(0, 30) };
-    }
+    var items = deepScanClickables();
+    lastButtonScan = items; // v1.2.3 (F/J): آخر مسح للتشخيص
     var wantGreen = /Call/i.test(label);
-    for (i = 0; i < btns.length; i++) {
-      b = btns[i];
-      if (!b.offsetParent) continue;
-      try {
-        var cs = getComputedStyle(b);
-        var bg = (cs && cs.backgroundColor) || '';
-        var m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (m) {
-          var r = +m[1], g = +m[2], bl = +m[3];
-          if (wantGreen && g > 120 && r < 120 && g > r + 40) return { el: b, method: 'لون أخضر', text: (b.textContent || '').trim().slice(0, 30) || 'زر أخضر' };
-          if (!wantGreen && r > 150 && g < 120 && r > g + 40) return { el: b, method: 'لون أحمر', text: (b.textContent || '').trim().slice(0, 30) || 'زر أحمر' };
-        }
-      } catch (e) {}
+    // 1) النص / aria-label / title — الأصغر مساحة أولاً (الزر قبل حاويته).
+    var sorted = items.slice().sort(function (a, b) { return (a.rect.w * a.rect.h) - (b.rect.w * b.rect.h); });
+    for (var i = 0; i < sorted.length; i++) {
+      if (re.test(sorted[i].text + ' ' + sorted[i].aria)) {
+        clickFallbackRect = sorted[i].rect;
+        return { el: sorted[i].el, method: 'نص الزر', text: (sorted[i].text || sorted[i].aria || '').slice(0, 30) };
+      }
     }
+    // 2) اللون: أخضر = CALL، أحمر = PUT — backgroundColor والتدرجات معاً.
+    var best = null, bestScore = 40;
+    for (var j = 0; j < items.length; j++) {
+      var sc = colorScore(items[j], wantGreen);
+      if (sc > bestScore) { bestScore = sc; best = items[j]; }
+    }
+    if (best) {
+      clickFallbackRect = best.rect;
+      return { el: best.el, method: wantGreen ? 'لون أخضر' : 'لون أحمر', text: (best.text || (wantGreen ? 'زر أخضر' : 'زر أحمر')).slice(0, 30) };
+    }
+    // 3) كلاس يحمل اسم الاتجاه.
+    var clsRe = wantGreen ? /call|buy|up/i : /put|sell|down/i;
+    for (var k = 0; k < sorted.length; k++) {
+      if (clsRe.test(sorted[k].cls)) {
+        clickFallbackRect = sorted[k].rect;
+        return { el: sorted[k].el, method: 'كلاس', text: (sorted[k].text || sorted[k].cls).slice(0, 30) };
+      }
+    }
+    // لا زر: احتفظ بأفضل تخمين لوني (ولو دون العتبة) لبديل الإحداثيات (H).
+    var guess = null, guessScore = 0;
+    for (var m2 = 0; m2 < items.length; m2++) {
+      var sc2 = colorScore(items[m2], wantGreen);
+      if (sc2 > guessScore) { guessScore = sc2; guess = items[m2]; }
+    }
+    clickFallbackRect = guess ? guess.rect : null;
     return { el: null, method: '', text: '' };
   }
   function findButton(label) {
     return findButtonWithMethod(label).el;
+  }
+  // v1.2.3 (H): نقرة بالإحداثيات كبديل أخير حين لا يوجد زر في DOM.
+  // ملاحظة: الأحداث الاصطناعية لها isTrusted===false وقد تتجاهلها
+  // المنصة؛ النقر DOM .click() على زر حقيقي يبقى الأساسي.
+  function clickAt(x, y) {
+    try {
+      var opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, pointerId: 1, isPrimary: true };
+      var el = document.elementFromPoint ? document.elementFromPoint(x, y) : null;
+      if (el && el.dispatchEvent) {
+        el.dispatchEvent(new MouseEvent('pointerdown', opts));
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('pointerup', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+        return true;
+      }
+      document.dispatchEvent(new MouseEvent('click', opts));
+      return true;
+    } catch (e) { return false; }
   }
   function humanDelay(minMs, maxMs) {
     return new Promise(function (r) { setTimeout(r, minMs + Math.random() * (maxMs - minMs)); });
@@ -1996,6 +2383,168 @@
     logLine('⏭️ تخطّي: ' + reason);
   }
 
+  // ---------- السوكيت الخاص (Socket.IO من داخل الصفحة — ديمو فقط) ----------
+  // v1.2.3 (own socket): يفتح السكربت اتصاله الخاص بـ
+  // wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket
+  // من داخل الصفحة المسجّل دخولها، ويصادق من document.cookie في
+  // الذاكرة فقط (القيم لا تُسجَّل ولا تُرسل لأي مكان). الاختبار الحي
+  // الأول يسجّل الإطارات الخام (0، 40، successauth، أول updateStream)
+  // قبل أي تداول. التنفيذ عبر openOrder معطّل: اسم الحدث موثق لكن
+  // شكل حمولته غير موثق، ولن تُخمَّن حمولة أمر تداول.
+  var OWN_SOCKET_URL = 'wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket';
+  function ownSocketCookieValue(re) {
+    try {
+      var parts = (document.cookie || '').split(';');
+      for (var i = 0; i < parts.length; i++) {
+        var kv = parts[i].split('=');
+        var k = (kv[0] || '').trim();
+        if (re.test(k)) return decodeURIComponent((kv.slice(1).join('=') || '').trim());
+      }
+    } catch (e) {}
+    return null;
+  }
+  function ownSocketConnect(asset) {
+    if (ownSocket.state === 'connecting' || ownSocket.state === 'open' || ownSocket.state === 'authed') return;
+    if (!isDemo()) { logLine('⛔ السوكيت الخاص يعمل على الديمو فقط — الحساب الحالي مش ديمو.'); return; }
+    // اقرأ الكوكي فقط — لا تسجّل القيم أبداً، ولا ترسلها لأي مكان
+    // غير إطار auth إلى خادم المنصة نفسه.
+    var session = ownSocketCookieValue(/^(session|ssid)$/i) || ownSocketCookieValue(/session/i);
+    var uid = ownSocketCookieValue(/^uid$/i);
+    var isDemoCookie = ownSocketCookieValue(/^isdemo$/i);
+    if (!session) {
+      logLine('⛔ السوكيت الخاص: لم أجد كوكي جلسة (session/ssid) في document.cookie — سجّل الدخول في المتصفح أولاً، ثم أعد المحاولة.');
+      ownSocket.state = 'no-session';
+      return;
+    }
+    logLine('🔌 السوكيت الخاص: وجدت كوكي جلسة (القيمة مخفية — لا تُسجَّل ولا تُرسل) و uid ' + (uid ? 'موجود' : 'غير موجود') + ' — أتصل بـ demo-api-eu.po.market ...');
+    ownSocket.state = 'connecting';
+    ownSocket.asset = normWsSymbol(asset || readAssetName() || '');
+    ownSocket.authSentAt = 0; ownSocket.subSentAt = 0; ownSocket.ticks = 0;
+    ownSocket.frames = { open: 0, connect: 0, successauth: 0, updateStream: 0 };
+    ownSocket.frameShapes = {};
+    var ws;
+    try { ws = new WebSocket(OWN_SOCKET_URL); } catch (e) { logLine('❌ السوكيت الخاص: تعذّر إنشاء WebSocket: ' + e.message); ownSocket.state = 'failed'; return; }
+    ws.binaryType = 'arraybuffer';
+    ownSocket.ws = ws;
+    ws.onopen = function () {
+      ownSocket.state = 'open';
+      ownSocket.frames.open++;
+      logLine('🔌 السوكيت الخاص: إطار خام 0 (OPEN) — أرسل 40 (CONNECT) ثم auth.');
+      try { ws.send('40'); } catch (e) {}
+      // auth — الصيغة الموثقة في المصادر فقط:
+      // 42["auth",{"session":...,"isDemo":1,"uid":...,"platform":2,...}]
+      var authObj = { session: session, isDemo: 1, platform: 2, isFastHistory: true, isOptimized: true };
+      if (uid) authObj.uid = uid;
+      if (isDemoCookie !== null) { var dv = parseInt(isDemoCookie, 10); if (dv === 0 || dv === 1) authObj.isDemo = dv; }
+      try {
+        ws.send('42' + JSON.stringify(['auth', authObj]));
+        ownSocket.authSentAt = Date.now();
+        logLine('🔌 السوكيت الخاص: أرسلت 42["auth",{session:***,isDemo,uid,platform:2}] (القيم مخفية).');
+      } catch (e) { logLine('❌ السوكيت الخاص: فشل إرسال auth: ' + e.message); }
+    };
+    ws.onmessage = function (ev) {
+      try {
+        var raw = ev.data;
+        if (typeof ArrayBuffer !== 'undefined' && raw instanceof ArrayBuffer) {
+          try { raw = new TextDecoder('utf-8').decode(raw); } catch (e) { return; }
+        } else if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+          var fr = new FileReader();
+          fr.onload = function () { ownSocketHandleFrame(String(fr.result || '')); };
+          fr.readAsText(raw);
+          return;
+        }
+        ownSocketHandleFrame(String(raw));
+      } catch (e) {}
+    };
+    ws.onclose = function () {
+      if (ownSocket.state !== 'closed') logLine('🔌 السوكيت الخاص: أُغلق الاتصال (الحالة: ' + ownSocket.state + ').');
+      ownSocket.state = 'closed'; ownSocket.ws = null;
+    };
+    ws.onerror = function () { logLine('❌ السوكيت الخاص: خطأ في الاتصال.'); };
+  }
+  function ownSocketHandleFrame(raw) {
+    try {
+      ownSocket.lastFrameAt = Date.now();
+      var sio = parseSocketIoMessage(raw);
+      if (sio.kind === 'handshake') {
+        ownSocket.frames.open++;
+        logLine('🔌 السوكيت الخاص: إطار خام 0 (OPEN/handshake) — مفاتيح: ' + (sio.payload && typeof sio.payload === 'object' ? Object.keys(sio.payload).join('، ') : 'بلا'));
+        return;
+      }
+      if (sio.kind === 'connect') {
+        ownSocket.frames.connect++;
+        logLine('🔌 السوكيت الخاص: إطار خام 40 (CONNECT) — في انتظار successauth.');
+        return;
+      }
+      if (sio.kind === 'ping') { try { if (ownSocket.ws) ownSocket.ws.send('3'); } catch (e) {} return; }
+      if (sio.kind === 'event') {
+        var evn = String(sio.event || '');
+        // سجّل شكل الإطار (اسم الحدث + مفاتيح الحمولة فقط) مرة لكل حدث.
+        var shape = evn + ':' + (sio.payload && typeof sio.payload === 'object' ? Object.keys(sio.payload).join(',') : typeof sio.payload);
+        if (!ownSocket.frameShapes[evn]) {
+          ownSocket.frameShapes[evn] = shape;
+          logLine('🔌 السوكيت الخاص: إطار 42["' + evn + '",...] — شكل الحمولة (مفاتيح فقط): ' + shape);
+        }
+        if (evn.toLowerCase() === 'successauth') {
+          ownSocket.frames.successauth++;
+          ownSocket.state = 'authed'; ownSocket.authed = true;
+          logLine('✅ السوكيت الخاص: successauth — المصادقة نجحت، سأشترك في الزوج.');
+          ownSocketSubscribe(ownSocket.asset);
+          return;
+        }
+        if (evn === 'updateStream' || evn === 'update_stream') {
+          ownSocket.frames.updateStream++;
+          var r = extractWsPrice(raw, ownSocket.asset);
+          if (r && r.price) {
+            ownSocket.ticks++;
+            ownSocket.lastTickAt = Date.now();
+            if (ownSocket.frames.updateStream === 1) logLine('✅ السوكيت الخاص: أول updateStream — سعر ' + r.price + ' للزوج ' + (r.asset || ownSocket.asset) + ' (الإطار الخام مسجَّل أعلاه).');
+            notePrice(r.price, 'Socket.IO خاص (ديمو)', 'ws');
+          }
+          return;
+        }
+        if (evn === 'successopenOrder' || evn === 'failopenOrder') {
+          logLine('🔌 السوكيت الخاص: ' + evn + ' — شكل الحمولة (مفاتيح فقط): ' + shape);
+          var waiters = ownSocket.orderWaiters.slice();
+          ownSocket.orderWaiters = [];
+          waiters.forEach(function (fn) { try { fn(evn === 'successopenOrder', sio.payload); } catch (e) {} });
+          return;
+        }
+        return;
+      }
+      // حدث ثنائي 451- أو بيانات بلا اسم: حاول الاستخراج العام.
+      if (sio.kind === 'data' || sio.kind === 'ack') {
+        var r2 = extractWsPrice(raw, ownSocket.asset);
+        if (r2 && r2.price) { ownSocket.ticks++; ownSocket.lastTickAt = Date.now(); notePrice(r2.price, 'Socket.IO خاص (ديمو)', 'ws'); }
+      }
+    } catch (e) {}
+  }
+  function ownSocketSubscribe(asset) {
+    var a = normWsSymbol(asset || ownSocket.asset || readAssetName() || '');
+    if (!a) { logLine('⚠ السوكيت الخاص: اسم الزوج غير معروف — لن أشترك حتى يُعرف الزوج.'); return; }
+    ownSocket.asset = a;
+    try {
+      // الاسمان الموثقان في المصادر؛ الحمولة {asset} فقط.
+      if (ownSocket.ws) ownSocket.ws.send('42' + JSON.stringify(['subscribeSymbol', { asset: a }]));
+      if (ownSocket.ws) ownSocket.ws.send('42' + JSON.stringify(['changeSymbol', { asset: a }]));
+      ownSocket.subSentAt = Date.now();
+      logLine('🔌 السوكيت الخاص: أرسلت subscribeSymbol/changeSymbol للزوج ' + a + ' — في انتظار أول updateStream.');
+    } catch (e) { logLine('❌ السوكيت الخاص: فشل إرسال الاشتراك: ' + e.message); }
+  }
+  function ownSocketClose() {
+    try { if (ownSocket.ws) ownSocket.ws.close(); } catch (e) {}
+    ownSocket.ws = null; ownSocket.state = 'closed'; ownSocket.authed = false;
+  }
+  function ownSocketOpenOrder(dir) {
+    // v1.2.3 (own socket): التنفيذ عبر openOrder معطّل عمداً —
+    // اسم الحدث موثق في المصادر، لكن شكل حمولته غير موثق،
+    // ولن أخمّن حمولة أمر تداول. إن ظهر شكل openOrder في
+    // الإطارات الحية (يسجَّله ownSocketHandleFrame)، فعّل هذا
+    // المسار بصيغة موثقة حينها.
+    logLine('⛔ تنفيذ عبر openOrder معطّل — صيغة حمولة openOrder غير موثقة في المصادر المتوفرة؛ لن أخمّنها. (البدائل: زر DOM، ثم نقرة الإحداثيات.)');
+    return false;
+  }
+
   // ---------- تنفيذ الصفقة (ضغطة زر في الواجهة) ----------
   async function executeTrade(dir, votes) {
     if (Date.now() - lastTradeAt < cooldownSec() * 1000) { logSkip('تبريد: لسه ماعداش ' + cooldownSec() + ' ثانية من آخر صفقة'); return; }
@@ -2005,16 +2554,42 @@
     if (limitReason) { logLine(limitReason); stopBot(); return; }
     if (CFG.filters.payout) {
       var payout = readPayout();
-      if (payout < CFG.minPayout) { logLine('العائد ' + Math.round(payout * 100) + '% أقل من ' + Math.round(CFG.minPayout * 100) + '% — تخطّي.'); return; }
-    } else { var payout = readPayout(); }
+      if (payout === null) {
+        // v1.2.3 (G): لا % داخل نموذج التداول — فلتر العائد أعمى؛
+        // نكمل بدون فلتر بدل التخمين 92%.
+        logLine('⚠ العائد % غير موجود في نموذج التداول — فلتر العائد أعمى، سأكمل بدون فلتر');
+        payout = CFG.minPayout;
+      } else if (payout < CFG.minPayout) { logLine('العائد ' + Math.round(payout * 100) + '% أقل من ' + Math.round(CFG.minPayout * 100) + '% — تخطّي.'); return; }
+    } else { var payout = readPayout(); if (payout === null) payout = CFG.minPayout; }
     var btn = findButton(dir === 'CALL' ? 'Call|شراء|صعود|أعلى' : 'Put|بيع|هبوط|أسفل');
-    if (!btn) { logLine('❌ مش لاقي زر ' + dir + ' في الواجهة — الصفقة اتلغت (الموقع ممكن يكون اتغيّر).'); return; }
+    var usedCoords = false, coordXY = null;
+    if (!btn) {
+      // v1.2.3 (H): بديل الإحداثيات من آخر مسح عميق للأزرار
+      // (أفضل تخمين لوني) — فقط حين لا يوجد زر في DOM.
+      if (clickFallbackRect) {
+        var cx = clickFallbackRect.x + Math.round(clickFallbackRect.w / 2);
+        var cy = clickFallbackRect.y + Math.round(clickFallbackRect.h / 2);
+        usedCoords = true; coordXY = { x: cx, y: cy };
+        logLine('⚠ زر ' + dir + ' غير موجود في DOM — سأحاول نقرة بالإحداثيات (' + cx + ',' + cy + ')؛ قد تتجاهلها المنصة لأن الحدث اصطناعي (isTrusted=false)');
+      } else {
+        // v1.2.3 (own socket): بديل التنفيذ عبر السوكيت الخاص —
+        // معطّل حالياً لعدم توثيق صيغة openOrder (انظر الدالة).
+        if (ownSocket.state === 'idle') { try { ownSocketConnect(readAssetName() || ''); } catch (e) {} }
+        ownSocketOpenOrder(dir);
+        logLine('❌ مش لاقي زر ' + dir + ' في الواجهة — الصفقة اتلغت (الموقع ممكن يكون اتغيّر).'); return;
+      }
+    }
     lastTradeAt = Date.now();
     tradesToday++;
     var balanceBefore = (document.body.innerText.match(/\$\s*([\d,]+\.\d{2})/) || [])[1];
     await humanDelay(800, 2500);
-    btn.click();
-    logLine('✅ ضغط ' + dir + ' | وافقت: ' + votes.join(', ') + ' | صفقات اليوم: ' + tradesToday);
+    if (usedCoords) {
+      clickAt(coordXY.x, coordXY.y);
+      logLine('✅ نقرت بالإحداثيات لـ ' + dir + ' | صفقات اليوم: ' + tradesToday + ' (لا أستطيع تأكيد أن المنصة قبلت النقرة الاصطناعية)');
+    } else {
+      btn.click();
+      logLine('✅ ضغط ' + dir + ' | وافقت: ' + votes.join(', ') + ' | صفقات اليوم: ' + tradesToday);
+    }
     await new Promise(function (r) { setTimeout(r, (CFG.expirySec + 10) * 1000); });
     var balanceAfter = (document.body.innerText.match(/\$\s*([\d,]+\.\d{2})/) || [])[1];
     var result = 'unknown', profit = 0;
@@ -2038,8 +2613,8 @@
   // ---------- الفحص الشامل المدمج (v1.2.2) — قراءة فقط، لا تداول ----------
   // نفس فحوصات سكربت الفحص المستقل، لكن داخل البوت نفسه: زر واحد
   // في اللوحة يشغّل 13 فحصاً ويعرض ملخصاً بالمشاكل، بلا أي ضغط
-  // على CALL/PUT وبلا تغيير أي إعداد. الفحص يأخذ ~2.5 دقيقة
-  // (60 ثانية WebSocket + 75 ثانية شموع) — وأثناءه لا تداول.
+  // على CALL/PUT وبلا تغيير أي إعداد. الفحص يأخذ ~3.25 دقيقة
+  // (120 ثانية WebSocket + 75 ثانية شموع) — وأثناءه لا تداول.
   function syntheticCloses(n, start) {
     var out = [], x = start || 1.0, seed = 12345, i;
     for (i = 0; i < n; i++) {
@@ -2083,37 +2658,77 @@
     return out;
   }
   function readAmountDiag() {
+    // v1.2.3 (G): لا تأخذ أول حقل رقمي — فضّل الحقل داخل نموذج
+    // التداول والأقرب لحقل الوقت.
     try {
       var inputs = document.querySelectorAll('input');
+      var timeInput = null;
       for (var i = 0; i < inputs.length; i++) {
-        var val = (inputs[i].value || '').trim();
+        var tv = (inputs[i].value || '').trim();
+        if (/^00:0\d:\d{2}$/.test(tv)) { timeInput = inputs[i]; break; }
+      }
+      var form = findTradeFormContainer();
+      var best = null, bestScore = -1;
+      for (var j = 0; j < inputs.length; j++) {
+        var val = (inputs[j].value || '').trim();
         if (!val || !/^\d+(\.\d{1,2})?$/.test(val)) continue;
         var n = parseFloat(val);
         if (!isFinite(n) || n <= 0 || n > 1000000) continue;
-        return { value: val, method: 'حقل إدخال' };
+        var score = 0;
+        if (form && form.contains(inputs[j])) score += 10;
+        if (timeInput) {
+          var p = inputs[j].parentElement, q = timeInput.parentElement;
+          if (p === q) score += 5;
+          else if (p && q && p.parentElement === q.parentElement) score += 3;
+        }
+        score -= j * 0.01; // الأقدم في الصفحة أولاً عند التعادل
+        if (score > bestScore) {
+          bestScore = score;
+          best = { value: val, method: (form && form.contains(inputs[j])) ? 'حقل مبلغ داخل نموذج التداول' : 'حقل إدخال' };
+        }
       }
-      var t = (document.body && document.body.innerText) || '';
-      var m = t.match(/(?:المبلغ|Amount|مبلغ)[^\d$]{0,20}\$?\s*([\d,]+\.?\d*)/i);
-      if (m) return { value: m[1], method: 'نص قريب من "المبلغ"' };
+      if (best) return best;
+      var c2 = findTradeFormContainer();
+      if (c2) {
+        var t = c2.innerText || '';
+        var m = t.match(/(?:المبلغ|Amount|مبلغ)[^\d$]{0,20}\$?\s*([\d,]+\.?\d*)/i);
+        if (m) return { value: m[1], method: 'نص قريب من "المبلغ" داخل النموذج' };
+      }
     } catch (e) {}
     return null;
   }
   function readTimeDiag() {
+    // v1.2.3 (G): لا رجوع لأول HH:MM:SS في نص الصفحة — كان يقرأ
+    // ساعة الحائط (11:33:08) لا مدة الصفقة. نقبل فقط حقل إدخال
+    // قيمته 00:0X:XX وتسميته القريبة تطابق وقت/مدة/time/expir/
+    // duration، ونرفض قيمة ضمن ±3 ثوانٍ من ساعة الحائط.
     try {
       var inputs = document.querySelectorAll('input');
+      var now = new Date();
+      var nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
       for (var i = 0; i < inputs.length; i++) {
         var val = (inputs[i].value || '').trim();
-        if (/^\d{2}:\d{2}(:\d{2})?$/.test(val)) return { value: val, method: 'حقل إدخال' };
+        if (!/^00:0\d:\d{2}$/.test(val)) continue;
+        var parts = val.split(':');
+        var vSec = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2]);
+        if (Math.abs(vSec - nowSec) <= 3) continue; // ساعة حائط لا مدة
+        var label = '';
+        try {
+          var pe = inputs[i].parentElement;
+          label = (inputs[i].getAttribute('aria-label') || '') + ' ' + (inputs[i].getAttribute('placeholder') || '') + ' ' + (inputs[i].getAttribute('title') || '') + ' ' + (pe ? (pe.textContent || '').slice(0, 120) : '');
+        } catch (e2) {}
+        if (!/وقت|مدة|time|expir|duration/i.test(label)) continue;
+        return { value: val, method: 'حقل مدة بجانب تسمية وقت/مدة' };
       }
-      var t = (document.body && document.body.innerText) || '';
-      var m = t.match(/\b(\d{2}:\d{2}:\d{2})\b/);
-      if (m) return { value: m[1], method: 'نص في الصفحة' };
     } catch (e) {}
     return null;
   }
   function readPayoutList() {
+    // v1.2.3 (G): % العائد من داخل نموذج التداول فقط، لا من الصفحة كلها.
     try {
-      var t = (document.body && document.body.innerText) || '';
+      var c = findTradeFormContainer();
+      if (!c) return [];
+      var t = c.innerText || '';
       var m = t.match(/(\d{1,3})\s*%/g) || [];
       var out = [];
       for (var i = 0; i < m.length && out.length < 3; i++) {
@@ -2137,7 +2752,7 @@
     { id: 'demo', name: '1. الحساب ديمو؟' },
     { id: 'asset', name: '2. اسم الزوج الحالي' },
     { id: 'domprice', name: '3. قراءة السعر من DOM' },
-    { id: 'ws', name: '4. WebSocket 60 ثانية + أحداث Socket.IO' },
+    { id: 'ws', name: '4. WebSocket 120 ثانية + أحداث Socket.IO' },
     { id: 'docstruct', name: '5. بنية الصفحة / iframes' },
     { id: 'buttons', name: '6. أزرار CALL / PUT (وجودها فقط)' },
     { id: 'amount', name: '7. حقل المبلغ' },
@@ -2193,8 +2808,8 @@
       if (!wsHooked) injectWsHook();
       syncWsDiag();
       var startMsgs = wsMessagesSeen;
-      setDiagRow('ws', 'run', 'WebSocket مثبّت — بستمع لرسائل المنصة 60 ثانية...');
-      for (var w = 0; w < 30; w++) {
+      setDiagRow('ws', 'run', 'WebSocket مثبّت — بستمع لرسائل المنصة 120 ثانية...');
+      for (var w = 0; w < 60; w++) { // v1.2.3 (J): الانتظار 120 ثانية لا 60
         await diagSleep(2000);
         syncWsDiag();
         var br = readWsPrice();
@@ -2204,16 +2819,43 @@
           for (var ek in wsIoEvents.events) evNames.push(ek + '×' + wsIoEvents.events[ek]);
           if (evNames.length) evTxt = ' | أحداث: ' + evNames.join('، ');
         }
-        setDiagRow('ws', 'run', 'WebSocket — رسائل جديدة: ' + (wsMessagesSeen - startMsgs) + (br !== null ? ' | سعر: ' + br : ' | بلا سعر بعد') + evTxt + ' — ' + (60 - (w + 1) * 2) + ' ث متبقية');
+        setDiagRow('ws', 'run', 'WebSocket — رسائل جديدة: ' + (wsMessagesSeen - startMsgs) + (br !== null ? ' | سعر: ' + br : ' | بلا سعر بعد') + evTxt + ' — ' + (120 - (w + 1) * 2) + ' ث متبقية');
       }
       syncWsDiag();
       var finPrice = readWsPrice();
       var evList = [];
       if (wsIoEvents && wsIoEvents.events) for (var fk in wsIoEvents.events) evList.push(fk + '×' + wsIoEvents.events[fk]);
       var ioTxt = 'رسائل جديدة: ' + (wsMessagesSeen - startMsgs) + ' | handshake: ' + (wsIoEvents.handshake || 0) + ' | ping: ' + (wsIoEvents.ping || 0) + ' | أحداث 42: ' + (wsIoEvents.total42 || 0) + (evList.length ? ' (' + evList.join('، ') + ')' : ' (بلا أسماء أحداث)');
+      // v1.2.3 (J): ملخص كل سوكيت حسب الـ URL.
+      if (poSockets) {
+        var sk2 = Object.keys(poSockets);
+        if (sk2.length) {
+          ioTxt += ' | Sockets: ' + sk2.length + ' — ' + sk2.map(function (k) {
+            var so2 = poSockets[k];
+            var evs = [];
+            if (so2.events) for (var e2 in so2.events) evs.push(e2 + '×' + so2.events[e2]);
+            return String(so2.url || '').replace(/^wss?:\/\//, '').slice(0, 50) + ' ×' + (so2.msgs || 0) + (evs.length ? ' (' + evs.join('، ') + ')' : '');
+          }).join(' | ');
+        }
+      }
       if (finPrice !== null) setDiagRow('ws', 'ok', 'WebSocket شغال ✅ — سعر: ' + finPrice + ' | ' + ioTxt);
       else if (wsMessagesSeen - startMsgs > 0) setDiagRow('ws', 'warn', 'WebSocket بيستقبل رسائل لكن مفيش فيها سعر الزوج الحالي' + (asset ? ' (' + asset + ')' : ' (اسم الزوج غير معروف)') + ' — ' + ioTxt);
-      else setDiagRow('ws', 'warn', 'WebSocket مثبّت لكن وصلت 0 رسالة جديدة في 60 ثانية — السوكيت غالباً اتفتح قبل حقن الخطاف. أعد تحميل الصفحة ثم أعد الفحص. | ' + ioTxt);
+      else setDiagRow('ws', 'warn', 'WebSocket مثبّت لكن وصلت 0 رسالة جديدة في 120 ثانية — السوكيت غالباً اتفتح قبل حقن الخطاف. أعد تحميل الصفحة ثم أعد الفحص. | ' + ioTxt);
+      if (finPrice === null) {
+        // v1.2.3 (own socket): خطاف الصفحة بلا سعر — جرّب السوكيت
+        // الخاص كمصدر احتياطي 30 ثانية (قراءة فقط، بلا تداول).
+        setDiagRow('ws', 'run', 'خطاف الصفحة بلا سعر — أجرّب السوكيت الخاص (ديمو) 30 ثانية...');
+        try { ownSocketConnect(asset); } catch (e) {}
+        for (var ow = 0; ow < 15; ow++) {
+          await diagSleep(2000);
+          var op = readWsPrice();
+          if (op !== null) { finPrice = op; break; }
+          if (ownSocket.state === 'failed' || ownSocket.state === 'no-session' || ownSocket.state === 'closed') break;
+          setDiagRow('ws', 'run', 'سوكيت خاص: ' + ownSocket.state + ' | ticks: ' + ownSocket.ticks + ' — ' + (30 - (ow + 1) * 2) + ' ث متبقية');
+        }
+        if (finPrice !== null) setDiagRow('ws', 'ok', 'السوكيت الخاص شغال ✅ — سعر: ' + finPrice + ' | ticks: ' + ownSocket.ticks + ' | إطارات: open×' + ownSocket.frames.open + ' connect×' + ownSocket.frames.connect + ' successauth×' + ownSocket.frames.successauth + ' updateStream×' + ownSocket.frames.updateStream);
+        else setDiagRow('ws', 'warn', 'السوكيت الخاص بلا سعر — الحالة: ' + ownSocket.state + ' | ticks: ' + ownSocket.ticks + ' | إطارات: open×' + ownSocket.frames.open + ' connect×' + ownSocket.frames.connect + ' successauth×' + ownSocket.frames.successauth + ' updateStream×' + ownSocket.frames.updateStream + ' — راجع سجل اللوحة لأشكال الإطارات الخام.');
+      }
     } catch (e) { setDiagRow('ws', 'bad', 'تعذّر فحص WebSocket: ' + e.message); }
     try {
       var ds = diagDocStructure();
@@ -2224,9 +2866,23 @@
     try {
       var callB = findButtonWithMethod('Call|شراء|صعود|أعلى');
       var putB = findButtonWithMethod('Put|بيع|هبوط|أسفل');
-      if (callB.el && putB.el) setDiagRow('buttons', 'ok', 'زر CALL موجود (' + callB.method + ': "' + callB.text + '") | زر PUT موجود (' + putB.method + ': "' + putB.text + '") — لم يُضغط أي زر.');
-      else if (callB.el || putB.el) setDiagRow('buttons', 'warn', 'زر واحد فقط موجود — CALL: ' + (callB.el ? '"' + callB.text + '"' : 'مش موجود') + ' | PUT: ' + (putB.el ? '"' + putB.text + '"' : 'مش موجود'));
-      else setDiagRow('buttons', 'bad', 'مش لاقي زر CALL ولا زر PUT في الصفحة — لا بالنص ولا بـ aria-label ولا باللون. البوت لن يستطيع تنفيذ أي صفقة (الواجهة ممكن تكون اتغيّرت أو داخل iframe).');
+      // v1.2.3 (J): أعلى 5 عناصر قابلة للنقر (نص + مستطيل) من آخر مسح عميق.
+      var top5 = '';
+      try {
+        var seen5 = {}, list5 = [];
+        (lastButtonScan || []).forEach(function (it) {
+          var key5 = (it.text || '') + '|' + it.rect.x + ',' + it.rect.y;
+          if (seen5[key5]) return;
+          seen5[key5] = true;
+          list5.push(it);
+        });
+        list5 = list5.slice(0, 5);
+        if (list5.length) top5 = ' | أعلى 5 عناصر قابلة للنقر: ' + list5.map(function (it, idx) { return (idx + 1) + ') "' + (it.text || it.aria || '(بلا نص)') + '" [' + it.rect.x + ',' + it.rect.y + ' ' + it.rect.w + '×' + it.rect.h + ']'; }).join(' | ');
+        else top5 = ' | لا عناصر قابلة للنقر في المسح العميق.';
+      } catch (e) {}
+      if (callB.el && putB.el) setDiagRow('buttons', 'ok', 'زر CALL موجود (' + callB.method + ': "' + callB.text + '") | زر PUT موجود (' + putB.method + ': "' + putB.text + '") — لم يُضغط أي زر.' + top5);
+      else if (callB.el || putB.el) setDiagRow('buttons', 'warn', 'زر واحد فقط موجود — CALL: ' + (callB.el ? '"' + callB.text + '"' : 'مش موجود') + ' | PUT: ' + (putB.el ? '"' + putB.text + '"' : 'مش موجود') + top5);
+      else setDiagRow('buttons', 'bad', 'مش لاقي زر CALL ولا زر PUT في الصفحة — لا بالنص ولا بـ aria-label ولا باللون. البوت لن يستطيع تنفيذ أي صفقة (الواجهة ممكن تكون اتغيّرت أو داخل iframe).' + top5);
     } catch (e) { setDiagRow('buttons', 'bad', 'تعذّر فحص الأزرار: ' + e.message); }
     try {
       var amt = readAmountDiag();
@@ -2240,7 +2896,7 @@
     } catch (e) { setDiagRow('time', 'bad', 'تعذّر فحص الزمن: ' + e.message); }
     try {
       var pays = readPayoutList();
-      if (pays.length) setDiagRow('payout', 'ok', 'نسب مئوية في الصفحة: ' + pays.join('، ') + ' — أول نسبة غالباً هي العائد.');
+      if (pays.length) setDiagRow('payout', 'ok', 'نسب مئوية داخل نموذج التداول: ' + pays.join('، ') + ' — أول نسبة غالباً هي العائد.');
       else setDiagRow('payout', 'warn', 'مش لاقي أي نسبة % في الصفحة — فلتر العائد قد لا يعمل صح.');
     } catch (e) { setDiagRow('payout', 'bad', 'تعذّر فحص العائد: ' + e.message); }
     try {
@@ -2434,7 +3090,7 @@
     p.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:999999;background:#222;color:#fff;'
       + 'padding:12px;border-radius:10px;font-size:13px;width:250px;max-height:85vh;overflow:auto;box-shadow:0 0 12px #000;';
     p.innerHTML = '<style>#muse-bot-panel input, #muse-bot-panel select, #muse-bot-panel button { background:#ffffff !important; color:#000000 !important; border:1px solid #888 !important; font-size:14px !important; padding:4px !important; } #muse-bot-panel label { color:#ffffff !important; }</style>'
-      + '<b>🤖 Pocket Demo Bot v1.2.2</b><br>'
+      + '<b>🤖 Pocket Demo Bot v1.2.3</b><br>'
       + '<span style="color:#f39c12">ديمو بس — أتمتة الواجهة مخالفة لشروط المنصة وقد تؤدي للحظر.</span><br>'
       + 'الوضع: <select id="muse-mode">'
       + Object.keys(MODES).map(function (k) {
@@ -2477,7 +3133,7 @@
       + '<div id="muse-bot-wsdiag" style="margin-top:4px;font-size:11px;color:#aaa;white-space:pre-wrap;word-wrap:break-word">📡 WebSocket: جارٍ الفحص...</div>'
       + '<div style="margin-top:8px;border-top:1px solid #444;padding-top:8px">'
       + '<b>🔍 فحص شامل (تشخيص — لا يتداول)</b><br>'
-      + '<span style="color:#aaa;font-size:11px">يختبر قراءة السعر والأزرار والشموع — بلا أي ضغط على CALL/PUT. ياخد ~2.5 دقيقة.</span><br>'
+      + '<span style="color:#aaa;font-size:11px">يختبر قراءة السعر والأزرار والشموع — بلا أي ضغط على CALL/PUT. ياخد ~3.25 دقيقة.</span><br>'
       + '<button id="muse-diag-start" style="padding:8px 14px;margin-top:6px;font-weight:bold">▶ ابدأ الفحص الشامل</button>'
       + '<div id="muse-diag-results" style="margin-top:6px">'
       + DIAG_CHECKS.map(function (c) {
@@ -2550,6 +3206,9 @@
       if (!isDemo()) { alert('الحساب مش ديمو! بدّل للديمو الأول — السكربت مش هيشتغل على حساب حقيقي.'); return; }
       if (!confirm('تأكيد: الحساب ده ديمو فعلاً؟ السكربت هيضغط CALL/PUT بنفسه.')) return;
       running = true;
+      // v1.2.3 (own socket): افتح السوكيت الخاص بالسكربت (ديمو)
+      // كمصدر سعر احتياطي — المصادقة من كوكي المتصفح في الذاكرة.
+      try { ownSocketConnect(readAssetName() || ''); } catch (e) {}
       updateStatsDisplay();
       var selStr = (CFG.strategies && CFG.strategies.length) ? CFG.strategies.join('، ') : 'مفيش';
       logLine('السكربت شغال — وضع ' + CFG.mode + '، استراتيجيات: ' + selStr + ' — تسخين ' + requiredCloses() + ' شمعة (~' + Math.ceil(requiredCloses() * CANDLE_SEC / 60) + ' دقيقة)'
@@ -2559,7 +3218,7 @@
     document.getElementById('muse-stop').onclick = stopBot;
     document.getElementById('muse-diag-start').onclick = runDiagnostics;
   }
-  function stopBot() { running = false; logLine('السكربت وقف.'); }
+  function stopBot() { running = false; try { ownSocketClose(); } catch (e) {} logLine('السكربت وقف.'); }
 
   // Test hooks (harmless in the browser): lets a node harness feed fake
   // candles and call decide() without a live Pocket Option page.
@@ -2587,6 +3246,11 @@
       extractWsPrice: extractWsPrice, readWsPrice: readWsPrice, readAssetName: readAssetName,
       parseSocketIoMessage: parseSocketIoMessage, diagDocStructure: diagDocStructure,
       runDiagnostics: runDiagnostics, findButtonWithMethod: findButtonWithMethod,
+      deepScanClickables: deepScanClickables, clickAt: clickAt, ownSocketConnect: ownSocketConnect,
+      ownSocketClose: ownSocketClose, ownSocketOpenOrder: ownSocketOpenOrder,
+      getOwnSocket: function () { return { state: ownSocket.state, asset: ownSocket.asset, ticks: ownSocket.ticks, frames: ownSocket.frames }; },
+      getLastButtonScan: function () { return lastButtonScan; },
+      getPoSockets: function () { return poSockets; },
       getIsTop: function () { return IS_TOP; },
       getWsIoEvents: function () { return wsIoEvents; },
       getDiagResults: function () { return diagTest.results; },
