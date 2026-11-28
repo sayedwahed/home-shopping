@@ -211,6 +211,13 @@ def create_app():
 
 app = create_app()
 
+# Serverless hosts (e.g. Vercel) have no shell to run seed.py, so create
+# the tables and seed the 3 products at import time. The seed is
+# idempotent (re-runs preserve click counts); seed_from_json() calls
+# init_db() itself, and the __main__ block below does the same for
+# local runs.
+store_db.seed_from_json()
+
 if __name__ == "__main__":
     store_db.init_db()
     store_db.seed_from_json()

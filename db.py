@@ -2,10 +2,11 @@
 
 Postgres-first (Render + free Neon Postgres): when the DATABASE_URL
 environment variable is set, every query goes through psycopg2 to
-Postgres. Otherwise the local SQLite file (data/store.db) is used for
-local development. The rest of the app (app.py, seed.py,
-scripts/refresh_prices.py) uses this module only, so it never has to
-know which backend is active.
+Postgres. Otherwise the local SQLite file is used: data/store.db for
+local development, or /tmp/store.db on Vercel (env VERCEL=1), because
+Vercel's filesystem is read-only except /tmp. The rest of the app
+(app.py, seed.py, scripts/refresh_prices.py) uses this module only,
+so it never has to know which backend is active.
 
 Tables (system 2 of the spec):
   products  - the catalog. Only products seeded from data/products.json
@@ -34,7 +35,25 @@ import urllib.parse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.environ.get("STORE_DB_PATH", os.path.join(DATA_DIR, "store.db"))
+
+
+def _default_db_path():
+    """SQLite file location for the fallback backend.
+
+    An explicit STORE_DB_PATH always wins. On Vercel (env VERCEL=1)
+    the deployment filesystem is read-only except /tmp, so the SQLite
+    file must live in /tmp — writing to data/store.db there would fail.
+    Local runs keep data/store.db exactly as before.
+    """
+    explicit = os.environ.get("STORE_DB_PATH")
+    if explicit:
+        return explicit
+    if os.environ.get("VERCEL") == "1":
+        return os.path.join("/tmp", "store.db")
+    return os.path.join(DATA_DIR, "store.db")
+
+
+DB_PATH = _default_db_path()
 DATABASE_URL = os.environ.get("DATABASE_URL") or ""
 SEED_PATH = os.path.join(DATA_DIR, "products.json")
 
