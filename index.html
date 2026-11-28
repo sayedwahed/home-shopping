@@ -3,7 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Home Shopping</title>
+<title>Home Shopping | حساسات لمس TTP223 وساعة رجالي ذهبية وشريط ماوس بخصومات</title>
+<meta name="description" content="Home Shopping: منتجات مختارة من AliExpress بأسعار بالجنيه المصري — موديولات حساسات لمس TTP223 بـ 164.94 جنيه، ساعة رجالي ذهبية هيكلية بـ 1,160.22 جنيه، وشريط لاصق لمنع انزلاق الماوس Hotline Games بـ 388.03 جنيه.">
+<link rel="canonical" href="https://sayedwahed.github.io/home-shopping/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Home Shopping">
+<meta property="og:title" content="Home Shopping | منتجات مختارة من AliExpress">
+<meta property="og:description" content="حساسات لمس TTP223، ساعة رجالي ذهبية هيكلية، وشريط مانع انزلاق للماوس — بأسعار بالجنيه المصري وروابط شراء على AliExpress.">
+<meta property="og:url" content="https://sayedwahed.github.io/home-shopping/">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Home Shopping",
+  "url": "https://sayedwahed.github.io/home-shopping/",
+  "itemListElement": [
+    {
+      "@type": "Product",
+      "position": 1,
+      "name": "موديولات حساسات لمس TTP223 للمشاريع الإلكترونية",
+      "description": "حساس لمس سعوي TTP223 لمشاريع الأردوينو والإلكترونيات: يشغّل الدوائر باللمس بدل الأزرار، سهل التوصيل للمبتدئين والهواة، ومناسب لمشاريع التحكم والإضاءة.",
+      "category": "إلكترونيات",
+      "offers": {
+        "@type": "Offer",
+        "price": "164.94",
+        "priceCurrency": "EGP",
+        "url": "https://s.click.aliexpress.com/e/_c3Ojkieh"
+      }
+    },
+    {
+      "@type": "Product",
+      "position": 2,
+      "name": "ساعة رجالي دهبي هيكلية بتصميم منقوش",
+      "description": "ساعة رجالي ذهبية هيكلية Skeleton بميناء شفاف يظهر التروس وتصميم منقوش أنيق، مناسبة للمناسبات والهدايا.",
+      "category": "موضة",
+      "offers": {
+        "@type": "Offer",
+        "price": "1160.22",
+        "priceCurrency": "EGP",
+        "url": "https://s.click.aliexpress.com/e/_c3SrjKRx"
+      }
+    },
+    {
+      "@type": "Product",
+      "position": 3,
+      "name": "شريط لاصق لمنع انزلاق الماوس Hotline Games (قطعتين)",
+      "description": "شريط لاصق Hotline Games ضد انزلاق الماوس (قطعتين): يثبّت الماوس ويحسّن التحكم والدقة في الألعاب، بخامة مريحة لليد.",
+      "category": "ألعاب",
+      "offers": {
+        "@type": "Offer",
+        "price": "388.03",
+        "priceCurrency": "EGP",
+        "url": "https://s.click.aliexpress.com/e/_c3Eclt65"
+      }
+    }
+  ]
+}
+</script>
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#f4f4f6;color:#222}
 header{background:#e62e04;color:#fff;padding:18px;text-align:center}
@@ -23,6 +80,7 @@ main{padding:12px;display:grid;gap:12px;max-width:900px;margin:auto;grid-templat
 .o{color:#888;text-decoration:line-through;font-size:14px;margin-right:6px}
 .badge{display:inline-block;background:#ffe1d6;color:#b3261e;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:bold}
 .t{font-size:13px;color:#666;margin:4px 0 10px}
+.desc{font-size:13px;color:#555;line-height:1.6;margin:2px 0 8px}
 .cat{font-size:12px;color:#888}
 .row{display:flex;gap:8px;margin-top:auto}
 button.d{flex:1;padding:11px;border:1px solid #e62e04;background:#fff;color:#e62e04;border-radius:8px;font-weight:bold;cursor:pointer}
@@ -104,6 +162,7 @@ function render(){
     c.className = 'c';
     var i = document.createElement('div'); i.className='i'; i.textContent = p.icon || '🛍️';
     var n = document.createElement('div'); n.className='n'; n.textContent = p.name;
+    var ds = document.createElement('div'); ds.className='desc'; ds.textContent = p.description || '';
     var pr = document.createElement('div'); pr.className='p';
     pr.textContent = fmt(p.price_egp);
     if (p.old_price_egp){
@@ -126,7 +185,7 @@ function render(){
     d.onclick = function(){ showDetails(p); };
     var a = document.createElement('a'); a.className='b'; a.href = p.affiliate_link; a.target='_blank'; a.rel='nofollow sponsored noopener'; a.textContent='شوف العرض على AliExpress';
     row.appendChild(d); row.appendChild(a);
-    c.append(i,n,pr,t,row);
+    c.append(i,n,ds,pr,t,row);
     el.appendChild(c);
   });
 }
@@ -135,6 +194,7 @@ function showDetails(p){
   document.getElementById('dlgIcon').textContent = p.icon || '🛍️';
   document.getElementById('dlgName').textContent = p.name;
   var lines = ['السعر: ' + fmt(p.price_egp)];
+  if (p.description) lines.push(p.description);
   if (p.old_price_egp) lines.push('السعر قبل الخصم: ' + fmt(p.old_price_egp));
   if (p.discount_percent) lines.push('الخصم: ' + p.discount_percent + '%');
   if (p.rating) lines.push('التقييم: ' + p.rating + ' من 5');
