@@ -30,7 +30,7 @@ Usage:
     python scripts/find_products.py --dry-run
         Rank candidates, write data/product_candidates.json + a
         Markdown report (data/product_candidates.md), add nothing.
-    python scripts/find_products.py --add [--max 30]
+    python scripts/find_products.py --add [--max 50]
         Merge the top N candidates into data/products.json, skipping
         items already present (by AliExpress item id) and never
         touching the existing products' links.
@@ -56,7 +56,7 @@ MIN_RATING = 4.5          # 5-star scale
 MIN_ORDERS = 100          # minimum sales volume (orders)
 MIN_COMMISSION_RATE = 0.05  # 5% — AliExpress reports this as 0.05 or "5%"
 MIN_DISCOUNT = 0.20       # 20% off the original price
-MAX_PER_RUN = 30          # default cap of products added per --add run
+MAX_PER_RUN = 50          # default cap of products added per --add run
 SLEEP_BETWEEN_CALLS = 0.6  # seconds, to respect API rate limits
 
 # Keywords searched with aliexpress.affiliate.product.query (3 pages each).
@@ -432,7 +432,7 @@ def main():
     group.add_argument("--add", action="store_true",
                        help="Merge the top N candidates into data/products.json.")
     parser.add_argument("--max", type=int, default=MAX_PER_RUN,
-                        help="Max products to add per --add run (default 30).")
+                        help="Max products to add per --add run (default 50).")
     args = parser.parse_args()
 
     app_key = os.environ.get("ALIEXPRESS_APP_KEY")
