@@ -6,6 +6,13 @@
   <h1>Hand-picked products, lower prices</h1>
   <p>We picked the best deals from AliExpress for you: electronics, fashion and gaming — real discounts and direct buy links.</p>
   <a class="cta" href="#products">Shop the deals</a>
+  {% if deal %}
+  <a class="deal-card" href="{{ url_for('product_page', product_id=deal['id']) }}">
+    <span class="deal-label">Deal of the Day</span>
+    <span class="deal-name">{{ deal['title'] }}</span>
+    <span class="deal-line"><b>-{{ deal['discount_percent'] }}% OFF</b> · ${{ '%.2f'|format(deal['price_usd']) }}</span>
+  </a>
+  {% endif %}
 </div></section>
 
 <div class="wrap">
@@ -17,6 +24,35 @@
 
   <h2 class="sec-title" id="products">Featured products</h2>
   <p class="sec-sub">All products below link straight to AliExpress.</p>
+  {% if show_newest %}
+  <h2 class="sec-title">New arrivals</h2>
+  <p class="sec-sub">The latest deals added to the store.</p>
+  <main class="grid">
+    {% for p in newest %}
+    <article class="card">
+      <div class="img">
+        <a href="{{ url_for('product_page', product_id=p['id']) }}">
+          <img src="{{ optimized_image(p['image_url'], p['id'], 400) }}" alt="{{ p['title'] }}" loading="lazy">
+        </a>
+        {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
+        {% if p['id'] in new_ids %}<span class="badge-new">NEW</span>{% endif %}
+      </div>
+      <div class="body">
+        <div class="cat">{{ p['category'] }}</div>
+        <div class="name"><a href="{{ url_for('product_page', product_id=p['id']) }}">{{ p['title'] }}</a></div>
+        <div class="stars">{% for i in range(5) %}{{ '★' if i < p['rating']|round(0, 'floor')|int else '☆' }}{% endfor %} <small>{{ p['rating'] }}</small></div>
+        <div class="price">${{ '%.2f'|format(p['price_usd']) }}{% if p['old_price_usd'] %}<span class="old">${{ '%.2f'|format(p['old_price_usd']) }}</span>{% endif %}</div>
+        <div class="sales">Rating {{ p['rating'] }} out of 5{% if p['reviews'] %} · {{ p['reviews'] }}{% endif %}</div>
+        <div class="btns">
+          <a class="btn ghost" href="{{ url_for('product_page', product_id=p['id']) }}">Details</a>
+          <button class="btn dark" type="button" data-add-to-cart data-id="{{ p['id'] }}" data-title="{{ p['title'] }}" data-price="{{ p['price_usd'] }}" data-image="{{ p['image_url'] }}">Add to Cart</button>
+          <a class="btn red" href="{{ url_for('go_page', product_id=p['id']) }}">Buy Now</a>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </main>
+  {% endif %}
   <form class="toolbar" action="{{ url_for('index') }}" method="get">
     {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
     {% if cat and cat != 'all' %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
@@ -40,6 +76,7 @@
             <img src="{{ optimized_image(p['image_url'], p['id'], 400) }}" alt="{{ p['title'] }}" loading="lazy">
           </a>
           {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
+          {% if p['id'] in new_ids %}<span class="badge-new">NEW</span>{% endif %}
         </div>
         <div class="body">
           <div class="cat">{{ p['category'] }}</div>

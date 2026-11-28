@@ -26,7 +26,7 @@
     </div>
     <div>
       <div class="cat" style="font-size:12px;color:#666;margin-bottom:5px">{{ product['category'] }}</div>
-      <h1>{{ product['title'] }}</h1>
+      <h1>{{ product['title'] }}{% if is_new %} <span class="badge-new inline">NEW</span>{% endif %}</h1>
       <div class="stars">{% for i in range(5) %}{{ '★' if i < product['rating']|round(0, 'floor')|int else '☆' }}{% endfor %} <small>{{ product['rating'] }} out of 5</small></div>
       <div class="price" style="font-size:26px">${{ '%.2f'|format(product['price_usd']) }}{% if product['old_price_usd'] %}<span class="old">${{ '%.2f'|format(product['old_price_usd']) }}</span>{% endif %}</div>
       {% if product['discount_percent'] %}<div class="sales">Discount: {{ product['discount_percent'] }}%</div>{% endif %}
@@ -39,6 +39,15 @@
       <div class="actions">
         <button class="btn dark" type="button" data-add-to-cart data-id="{{ product['id'] }}" data-title="{{ product['title'] }}" data-price="{{ product['price_usd'] }}" data-image="{{ product['image_url'] }}">Add to Cart</button>
         <a class="btn red" href="{{ url_for('go_page', product_id=product['id']) }}">Buy Now</a>
+      </div>
+      {% set page_url = base_url ~ url_for('product_page', product_id=product['id']) %}
+      <div class="share-row">
+        <span>Share:</span>
+        <a href="https://twitter.com/intent/tweet?text={{ product['title']|urlencode }}&amp;url={{ page_url|urlencode }}" target="_blank" rel="noopener">X</a>
+        <a href="https://www.facebook.com/sharer/sharer.php?u={{ page_url|urlencode }}" target="_blank" rel="noopener">Facebook</a>
+        <a href="https://pinterest.com/pin/create/button/?url={{ page_url|urlencode }}&amp;description={{ product['title']|urlencode }}&amp;media={{ product['image_url']|urlencode }}" target="_blank" rel="noopener">Pinterest</a>
+        <a href="https://wa.me/?text={{ (product['title'] ~ ' — ' ~ page_url)|urlencode }}" target="_blank" rel="noopener">WhatsApp</a>
+        <button type="button" class="btn ghost" data-copy-link="{{ page_url }}">Copy link</button>
       </div>
       <p style="font-size:12px;color:#888;margin-top:14px">Links are referral links. We may earn a commission when you buy at no extra cost to you. Prices change on AliExpress.</p>
     </div>
@@ -54,6 +63,7 @@
           <img src="{{ optimized_image(p['image_url'], p['id'], 400) }}" alt="{{ p['title'] }}" loading="lazy">
         </a>
         {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
+        {% if p['id'] in new_ids %}<span class="badge-new">NEW</span>{% endif %}
       </div>
       <div class="body">
         <div class="cat">{{ p['category'] }}</div>

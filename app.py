@@ -38,7 +38,7 @@ import csv
 import io
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     Flask,
@@ -147,6 +147,37 @@ def create_app():
             out.append(d)
         return out
 
+    def _parse_created(value):
+        """Parse a products.created_at ISO string to an aware datetime."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def _new_product_ids(conn, days=3):
+        """IDs of products added within the last `days` days (real dates)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        ids = set()
+        for row in conn.execute("SELECT id, created_at FROM products"):
+            created = _parse_created(row["created_at"])
+            if created is not None and created >= cutoff:
+                ids.add(row["id"])
+        return ids
+
+    def _deal_of_the_day(products):
+        """Product with the highest real discount (tie-break: rating).
+
+        `products` are _apply_pricing dicts. Returns None when no product
+        has a discount — the hero card is then hidden entirely.
+        """
+        discounted = [p for p in products if p.get("discount_percent")]
+        if not discounted:
+            return None
+        return max(discounted,
+                   key=lambda p: (p["discount_percent"], p.get("rating") or 0))
+
     @app.route("/")
     def index():
         q = (request.args.get("q") or "").strip()
@@ -176,6 +207,15 @@ def create_app():
         page = min(page, total_pages)
         page_products = products[(page - 1) * PER_PAGE:page * PER_PAGE]
         categories = store_db.get_categories(g.db)
+        # NEW badge + New arrivals + Deal of the Day (all from real data).
+        new_ids = _new_product_ids(g.db)
+        show_newest = total > 8 and not q and cat == "all" and max_price is None
+        newest = []
+        if total > 8:
+            newest = _apply_pricing(
+                store_db.get_all_products(g.db, sort="newest"))[:8]
+        deal = _deal_of_the_day(
+            _apply_pricing(store_db.get_all_products(g.db)))
         return render_template(
             "index.html",
             products=page_products,
@@ -188,6 +228,10 @@ def create_app():
             page=page,
             total_pages=total_pages,
             total=total,
+            new_ids=new_ids,
+            newest=newest,
+            show_newest=show_newest,
+            deal=deal,
         )
 
     @app.route("/product/<product_id>")
@@ -201,10 +245,16 @@ def create_app():
             if p["id"] != product_id
         ]
         related = _apply_pricing(related)
+        new_ids = _new_product_ids(g.db)
         return render_template(
             "product.html", product=product, related=related,
-            base_url=_base_url(),
+            base_url=_base_url(), new_ids=new_ids,
+            is_new=product["id"] in new_ids,
         )
+
+    @app.route("/about")
+    def about_page():
+        return render_template("about.html", base_url=_base_url())
 
     @app.route("/go/<product_id>")
     def go_page(product_id):
@@ -264,6 +314,7 @@ def create_app():
         xml = ['<?xml version="1.0" encoding="UTF-8"?>',
                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
         xml.append("<url><loc>%s/</loc></url>" % base)
+        xml.append("<url><loc>%s/about</loc></url>" % base)
         for p in products:
             xml.append(
                 "<url><loc>%s%s</loc></url>"

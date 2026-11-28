@@ -185,5 +185,28 @@
         setTimeout(function () { btn.textContent = original; }, 1200);
       });
     });
+    document.querySelectorAll("[data-copy-link]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var url = btn.getAttribute("data-copy-link");
+        var original = btn.textContent;
+        function done() {
+          btn.textContent = "Copied!";
+          setTimeout(function () { btn.textContent = original; }, 2000);
+        }
+        function fallback() {
+          var ta = document.createElement("textarea");
+          ta.value = url;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); done(); } catch (e) { /* no clipboard */ }
+          document.body.removeChild(ta);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done, fallback);
+        } else {
+          fallback();
+        }
+      });
+    });
   });
 })();

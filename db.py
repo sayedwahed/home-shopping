@@ -32,6 +32,7 @@ import os
 import re
 import sqlite3
 import urllib.parse
+from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -244,7 +245,7 @@ def init_db(db_path=DB_PATH):
         conn.close()
 
 
-def seed_from_json(seed_path=SEED_PATH, db_path=DB_PATH, stamp="2026-11-28T00:00:00Z"):
+def seed_from_json(seed_path=SEED_PATH, db_path=DB_PATH, stamp=None):
     """Seed products from products.json.
 
     Idempotent: re-running updates the product fields but preserves the
@@ -252,7 +253,13 @@ def seed_from_json(seed_path=SEED_PATH, db_path=DB_PATH, stamp="2026-11-28T00:00
     the DB but no longer in products.json are left untouched (never
     auto-deleted); only the owner edits products.json.
     Returns (inserted, updated) counts.
+
+    `stamp` defaults to the current UTC time, so a product first inserted
+    today carries today's real date (used by the storefront NEW badge).
+    An explicit stamp may be passed for reproducible seeds.
     """
+    if stamp is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(seed_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
