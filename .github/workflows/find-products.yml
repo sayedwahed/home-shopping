@@ -1,0 +1,46 @@
+# Daily product finder (companion to the price refresh).
+#
+# Runs scripts/find_products.py in --add mode: up to 50 NEW products a
+# day are merged into data/products.json (Flask store) — only products
+# that pass the filters (rating >= 4.5, orders >= 100, commission >= 5%,
+# discount >= 20%) and rank highest by commission x discount x rating x
+# log10(sales), each with an affiliate link generated with the owner's
+# tracking ID. The owner's original 3 products are never touched.
+# The change is committed back to the repo; the live store picks it up
+# on its daily pull + reload.
+#
+# The first live proof depends on the AliExpress app leaving "Test /
+# Under Review" status — until then every API call fails, the script
+# logs the exact error, exits non-zero, and adds nothing.
+
+name: Find products (auto-add)
+
+on:
+  schedule:
+    - cron: "0 7 * * *"   # daily 07:00 UTC, after the price refresh
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  find-products:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Find and add products (max 50)
+        env:
+          ALIEXPRESS_APP_KEY: ${{ secrets.ALIEXPRESS_APP_KEY }}
+          ALIEXPRESS_APP_SECRET: ${{ secrets.ALIEXPRESS_APP_SECRET }}
+          ALIEXPRESS_TRACKING_ID: ${{ secrets.ALIEXPRESS_TRACKING_ID }}
+        run: python scripts/find_products.py --add --max 50
+      - name: Commit new products
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/products.json
+          git diff --cached --quiet || git commit -m "chore: auto-add up to 50 AliExpress products (finder)"
+          git push
