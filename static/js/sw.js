@@ -3,7 +3,7 @@
    HTML pages and API responses are NEVER cached — the storefront,
    prices and click counts must always be fresh. */
 
-var CACHE = "home-shopping-static-v1";
+var CACHE = "home-shopping-static-v2";
 
 self.addEventListener("install", function (event) {
   self.skipWaiting();
