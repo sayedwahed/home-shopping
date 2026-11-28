@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_products_created ON products(created_at);
 CREATE INDEX IF NOT EXISTS idx_products_discount ON products(discount_percent);
 
 CREATE TABLE IF NOT EXISTS clicks (
-    id          %s,
+    id          %(id)s,
     product_id  TEXT NOT NULL,
     ref         TEXT,
     ip_hash     TEXT,
@@ -122,7 +122,44 @@ CREATE TABLE IF NOT EXISTS settings (
     value       TEXT,
     updated_at  TEXT NOT NULL
 );
-""" % clicks_id
+
+-- System 7/8: application errors + failed admin logins (see errors table).
+CREATE TABLE IF NOT EXISTS errors (
+    id          %(id)s,
+    level       TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    context     TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_errors_created ON errors(created_at);
+
+-- System 11: email subscribers (double opt-in). Only the token *hash*
+-- is stored, never the raw token. No mail is sent to unconfirmed rows.
+CREATE TABLE IF NOT EXISTS subscribers (
+    id               %(id)s,
+    email            TEXT NOT NULL UNIQUE,
+    confirmed        INTEGER NOT NULL DEFAULT 0,
+    token_hash       TEXT,
+    token_expires_at TEXT,
+    created_at       TEXT NOT NULL,
+    confirmed_at     TEXT,
+    unsubscribed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
+CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token_hash);
+
+-- System 10: web-push subscriptions. Endpoint + keys only — no
+-- personal data, no email, no name.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id          %(id)s,
+    endpoint    TEXT NOT NULL UNIQUE,
+    p256dh      TEXT,
+    auth        TEXT,
+    country     TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
+""" % {"id": clicks_id}
 
 
 class Connection:
@@ -355,3 +392,201 @@ def set_setting(conn, key, value, stamp):
             (key, value, stamp),
         )
     conn.commit()
+
+
+# --- Systems 7/8/18: errors, analytics -------------------------------------
+
+def log_error(conn, level, message, context=None, stamp=None):
+    """Write one row to the errors table (system 7 dashboard + 8 login log).
+
+    `level` is one of info/warning/error/security. `context` is a short
+    free-text tag (e.g. an ip_hash or a route name) — never a full IP.
+    """
+    from datetime import datetime, timezone
+
+    stamp = stamp or datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO errors (level, message, context, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (level, message, context, stamp),
+    )
+    conn.commit()
+
+
+def get_recent_errors(conn, limit=20):
+    return conn.execute(
+        "SELECT * FROM errors ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
+def get_error_count(conn):
+    row = conn.execute("SELECT COUNT(*) AS n FROM errors").fetchone()
+    return row["n"] if row else 0
+
+
+def total_clicks(conn):
+    row = conn.execute("SELECT COUNT(*) AS n FROM clicks").fetchone()
+    return row["n"] if row else 0
+
+
+def clicks_per_product(conn):
+    """[(product_id, title, clicks)] ordered by clicks desc."""
+    return conn.execute(
+        "SELECT p.id AS product_id, p.title AS title, "
+        "COUNT(c.id) AS n FROM products p "
+        "LEFT JOIN clicks c ON c.product_id = p.id "
+        "GROUP BY p.id, p.title ORDER BY n DESC, p.id ASC"
+    ).fetchall()
+
+
+def clicks_per_day(conn, days=30):
+    """[(day YYYY-MM-DD, clicks)] for the last `days` days, newest first."""
+    return conn.execute(
+        "SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS n "
+        "FROM clicks GROUP BY day ORDER BY day DESC LIMIT ?",
+        (days,),
+    ).fetchall()
+
+
+def clicks_per_product_day(conn, days=30):
+    """[(day, product_id, title, clicks)] newest day first."""
+    return conn.execute(
+        "SELECT substr(c.created_at, 1, 10) AS day, "
+        "p.id AS product_id, p.title AS title, COUNT(*) AS n "
+        "FROM clicks c JOIN products p ON p.id = c.product_id "
+        "GROUP BY day, p.id, p.title ORDER BY day DESC, n DESC LIMIT ?",
+        (days * 10,),
+    ).fetchall()
+
+
+def top_countries(conn, limit=10):
+    """[(country, clicks)] — country codes only, never IPs."""
+    return conn.execute(
+        "SELECT country, COUNT(*) AS n FROM clicks "
+        "WHERE country IS NOT NULL AND country <> '' "
+        "GROUP BY country ORDER BY n DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+# --- System 11: email subscribers (double opt-in) --------------------------
+
+def get_subscriber_by_email(conn, email):
+    return conn.execute(
+        "SELECT * FROM subscribers WHERE email = ?", (email,)
+    ).fetchone()
+
+
+def get_subscriber_by_token_hash(conn, token_hash):
+    return conn.execute(
+        "SELECT * FROM subscribers WHERE token_hash = ?", (token_hash,)
+    ).fetchone()
+
+
+def upsert_pending_subscriber(conn, email, token_hash, token_expires_at, stamp):
+    """Create (or refresh) a pending subscriber. Returns the row."""
+    row = get_subscriber_by_email(conn, email)
+    if row is None:
+        conn.execute(
+            "INSERT INTO subscribers (email, confirmed, token_hash, "
+            "token_expires_at, created_at) VALUES (?, 0, ?, ?, ?)",
+            (email, token_hash, token_expires_at, stamp),
+        )
+    else:
+        conn.execute(
+            "UPDATE subscribers SET token_hash = ?, token_expires_at = ?, "
+            "confirmed = 0, unsubscribed_at = NULL WHERE email = ?",
+            (token_hash, token_expires_at, email),
+        )
+    conn.commit()
+    return get_subscriber_by_email(conn, email)
+
+
+def confirm_subscriber(conn, token_hash, stamp):
+    """Confirm a pending subscriber by token hash. Returns True on success.
+
+    The token hash is KEPT after confirmation: the same token doubles
+    as the one-click unsubscribe token (it is printed in every mail the
+    store sends). It is cleared when the subscriber unsubscribes or
+    re-subscribes (which issues a fresh token).
+    """
+    row = get_subscriber_by_token_hash(conn, token_hash)
+    if row is None or row["confirmed"]:
+        return False
+    if row["token_expires_at"] and row["token_expires_at"] < stamp:
+        return False
+    conn.execute(
+        "UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE id = ?",
+        (stamp, row["id"]),
+    )
+    conn.commit()
+    return True
+
+
+def unsubscribe_subscriber(conn, token_hash, stamp):
+    """One-click unsubscribe by token hash. Returns True on success."""
+    row = get_subscriber_by_token_hash(conn, token_hash)
+    if row is None:
+        return False
+    conn.execute(
+        "UPDATE subscribers SET confirmed = 0, unsubscribed_at = ?, "
+        "token_hash = NULL WHERE id = ?",
+        (stamp, row["id"]),
+    )
+    conn.commit()
+    return True
+
+
+def count_subscribers(conn, confirmed_only=False):
+    sql = "SELECT COUNT(*) AS n FROM subscribers"
+    if confirmed_only:
+        sql += " WHERE confirmed = 1"
+    row = conn.execute(sql).fetchone()
+    return row["n"] if row else 0
+
+
+def get_pending_subscribers(conn, limit=50):
+    return conn.execute(
+        "SELECT * FROM subscribers WHERE confirmed = 0 "
+        "ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+# --- System 10: web-push subscriptions --------------------------------------
+
+def save_push_subscription(conn, endpoint, p256dh, auth, country, stamp):
+    if conn.postgres:
+        conn.execute(
+            "INSERT INTO push_subscriptions (endpoint, p256dh, auth, country, "
+            "created_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, "
+            "auth = EXCLUDED.auth, country = EXCLUDED.country, "
+            "created_at = EXCLUDED.created_at",
+            (endpoint, p256dh, auth, country, stamp),
+        )
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO push_subscriptions (endpoint, p256dh, auth, "
+            "country, created_at) VALUES (?, ?, ?, ?, ?)",
+            (endpoint, p256dh, auth, country, stamp),
+        )
+    conn.commit()
+
+
+def delete_push_subscription(conn, endpoint):
+    conn.execute(
+        "DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
+    )
+    conn.commit()
+
+
+def get_push_subscriptions(conn):
+    return conn.execute(
+        "SELECT * FROM push_subscriptions ORDER BY created_at DESC"
+    ).fetchall()
+
+
+def count_push_subscriptions(conn):
+    row = conn.execute("SELECT COUNT(*) AS n FROM push_subscriptions").fetchone()
+    return row["n"] if row else 0

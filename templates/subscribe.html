@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Subscribe — Home Shopping{% endblock %}
+{% block meta_desc %}Subscribe to Home Shopping deal alerts. Double opt-in: we send a confirmation email first.{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <h1 class="sec-title">Subscribe to deal alerts</h1>
+  <p class="sec-sub">One email when a good deal appears. We never share your
+  address. Every email carries an unsubscribe link, and we only email
+  addresses that confirmed their subscription.</p>
+  {% if message %}<div class="notice">{{ message }}</div>{% endif %}
+  <form action="{{ url_for('subscribe_post') }}" method="post" style="max-width:420px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="margin:10px 0">
+      <label for="email" style="display:block;font-size:13px;color:#555;margin-bottom:4px">Email address</label>
+      <input id="email" name="email" type="email" required maxlength="254"
+             style="width:100%;padding:9px;border:1px solid #ccc;border-radius:4px" placeholder="you@example.com">
+    </div>
+    <button class="btn red" type="submit">Subscribe</button>
+  </form>
+</div>
+{% endblock %}

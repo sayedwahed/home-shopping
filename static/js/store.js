@@ -87,8 +87,70 @@
     document.getElementById("overlay").classList.add("hidden");
   }
 
+  /* Service worker + push opt-in (systems 9-10).
+     The worker caches /static/ only, never HTML. Push is explicit
+     opt-in: the button below appears only when the store configured a
+     VAPID public key, and only after the visitor taps it. */
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
+
+  function metaContent(name) {
+    var m = document.querySelector('meta[name="' + name + '"]');
+    return m ? m.getAttribute("content") : "";
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
+    var raw = window.atob(base64);
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  function addPushOptIn() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (!metaContent("vapid-public-key")) return; // push not configured
+    var footer = document.querySelector("footer.site .foot-in");
+    if (!footer) return;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn ghost";
+    btn.textContent = "Enable notifications";
+    btn.style.marginTop = "10px";
+    btn.addEventListener("click", function () {
+      if (!("Notification" in window)) return;
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== "granted") return;
+        navigator.serviceWorker.ready.then(function (reg) {
+          return reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(metaContent("vapid-public-key"))
+          });
+        }).then(function (sub) {
+          return fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": metaContent("csrf-token")
+            },
+            body: JSON.stringify(sub.toJSON())
+          });
+        }).then(function () {
+          btn.textContent = "Notifications enabled ✓";
+          btn.disabled = true;
+        }).catch(function () {});
+      });
+    });
+    footer.appendChild(btn);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     updateBadge();
+    registerServiceWorker();
+    addPushOptIn();
     var cartBtn = document.getElementById("cartBtn");
     if (cartBtn) cartBtn.addEventListener("click", openDrawer);
     var closeBtn = document.getElementById("drawerClose");

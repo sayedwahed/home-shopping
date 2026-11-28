@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Admin dashboard — Home Shopping{% endblock %}
+
+{% block admin_content %}
+<p class="muted">Backend: {{ backend }} · Auth mode: {{ auth_mode }}</p>
+
+<h2>Overview</h2>
+<table>
+  <tr><th>Products</th><td>{{ product_count }}</td></tr>
+  <tr><th>Total clicks</th><td>{{ total_clicks }}</td></tr>
+  <tr><th>Confirmed subscribers</th><td>{{ confirmed_subs }} ({{ pending_subs }} pending)</td></tr>
+  <tr><th>Push subscriptions</th><td>{{ push_count }}</td></tr>
+  <tr><th>Errors logged</th><td>{{ error_count }}</td></tr>
+</table>
+
+<h2>Clicks per product</h2>
+<table>
+  <tr><th>Product</th><th>Clicks</th></tr>
+  {% for row in per_product %}
+  <tr><td>{{ row['title'] }}</td><td>{{ row['n'] }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Publishers</h2>
+<table>
+  <tr><th>Platform</th><th>Status</th><th>Missing credentials</th></tr>
+  {% for pub in publishers %}
+  <tr><td>{{ pub['label'] }}</td><td>{{ pub['status'] }}</td><td>{{ pub['missing_env']|join(', ') or '—' }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Last 20 errors</h2>
+{% if errors %}
+<table>
+  <tr><th>When</th><th>Level</th><th>Message</th><th>Context</th></tr>
+  {% for e in errors %}
+  <tr><td>{{ e['created_at'] }}</td><td>{{ e['level'] }}</td><td>{{ e['message'] }}</td><td>{{ e['context'] or '' }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No errors logged.</p>
+{% endif %}
+{% endblock %}

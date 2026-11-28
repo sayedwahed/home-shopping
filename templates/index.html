@@ -36,7 +36,7 @@
       <article class="card">
         <div class="img">
           <a href="{{ url_for('product_page', product_id=p['id']) }}">
-            <img src="{{ p['image_url'] }}" alt="{{ p['title'] }}" loading="lazy">
+            <img src="{{ optimized_image(p['image_url'], p['id'], 400) }}" alt="{{ p['title'] }}" loading="lazy">
           </a>
           {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
         </div>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Admin — Home Shopping{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .admin-wrap{max-width:900px;margin:30px auto;padding:0 16px;font-family:inherit}
+  .admin-wrap h1{font-size:22px;margin:0 0 4px}
+  .admin-wrap table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  .admin-wrap th,.admin-wrap td{border:1px solid #ddd;padding:7px 9px;text-align:left}
+  .admin-wrap th{background:#f5f5f5}
+  .admin-nav{margin:0 0 18px;font-size:14px}
+  .admin-nav a{margin-right:14px;color:#e62e04;font-weight:bold}
+  .admin-nav form{display:inline}
+  .field{margin:10px 0}
+  .field label{display:block;font-size:13px;color:#555;margin-bottom:4px}
+  .field input,.field select,.field textarea{width:100%;max-width:420px;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:14px}
+  .field textarea{max-width:100%;min-height:120px}
+  .flash-err{background:#fdecea;border:1px solid #f5c6c0;color:#8c1d12;padding:10px;border-radius:4px;margin:10px 0}
+  .flash-ok{background:#eaf7ee;border:1px solid #bfe6c8;color:#1d6b33;padding:10px;border-radius:4px;margin:10px 0}
+  .muted{color:#777;font-size:13px}
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+  <h1>Home Shopping — Admin</h1>
+  {% if session.get('admin_user') %}
+  <nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('admin_analytics') }}">Analytics</a>
+    <a href="{{ url_for('admin_publish') }}">Publish</a>
+    <a href="{{ url_for('index') }}">View store</a>
+    <form action="{{ url_for('admin_logout') }}" method="post" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" style="background:none;border:none;color:#e62e04;font-weight:bold;cursor:pointer;font-size:14px">Log out ({{ session.get('admin_user') }})</button>
+    </form>
+  </nav>
+  {% endif %}
+  {% block admin_content %}{% endblock %}
+  <p class="muted">Admin area. Sessions are signed; log out when finished.</p>
+</div>
+</body>
+</html>

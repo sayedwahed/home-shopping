@@ -1,0 +1,51 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Publish — Home Shopping{% endblock %}
+
+{% block admin_content %}
+<h2>Publish a draft (dry-run only)</h2>
+<p class="muted">Nothing here publishes live. A dry run only logs what
+<em>would</em> be published, so you can review it first. Live publishing
+is done from each platform's own dashboard.</p>
+
+{% if result %}
+  {% if result['status'] == 'dry_run' %}
+    <div class="flash-ok"><b>{{ result['platform'] }} — dry run.</b> {{ result['detail'] }}</div>
+  {% else %}
+    <div class="flash-err"><b>{{ result['platform'] }} — {{ result['status'] }}.</b> {{ result['detail'] }}</div>
+  {% endif %}
+{% endif %}
+
+<h2>Publishers</h2>
+<table>
+  <tr><th>Platform</th><th>Status</th><th>Missing credentials</th></tr>
+  {% for pub in publishers %}
+  <tr><td>{{ pub['label'] }}</td><td>{{ pub['status'] }}</td><td>{{ pub['missing_env']|join(', ') or '—' }}</td></tr>
+  {% endfor %}
+</table>
+
+<form action="{{ url_for('admin_publish_run') }}" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="field">
+    <label for="platform">Platform</label>
+    <select id="platform" name="platform">
+      {% for pub in publishers %}
+      <option value="{{ pub['name'] }}">{{ pub['label'] }} ({{ pub['status'] }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="title">Title</label>
+    <input id="title" name="title" type="text" required maxlength="200">
+  </div>
+  <div class="field">
+    <label for="body">Body</label>
+    <textarea id="body" name="body" required></textarea>
+  </div>
+  <div class="field">
+    <label for="image_url">Image URL (optional)</label>
+    <input id="image_url" name="image_url" type="url" maxlength="500">
+  </div>
+  <button class="btn dark" type="submit">Dry-run this draft</button>
+</form>
+{% endblock %}

@@ -2,4 +2,11 @@
 __pycache__/
 *.pyc
 data/store.db
+data/monitor_status.json
+data/product_candidates.json
+data/product_candidates.md
+backups/
+reports/
+logs/
+content/drafts/
 .env
