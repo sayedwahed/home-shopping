@@ -2,6 +2,7 @@
 
 {% block content %}
 <section class="hero"><div class="hero-in">
+  <div class="hero-eyebrow">AliExpress deals · Up to 73% off</div>
   <h1>Hand-picked products, lower prices</h1>
   <p>We picked the best deals from AliExpress for you: electronics, fashion and gaming — real discounts and direct buy links.</p>
   <a class="cta" href="#products">Shop the deals</a>
@@ -58,6 +59,18 @@
       <div class="empty">No products match your search.</div>
     {% endif %}
   </main>
+
+  {% if total_pages > 1 %}
+  <nav class="pager" aria-label="Product pages">
+    {% if page > 1 %}
+    <a href="{{ url_for('index', q=q or None, cat=cat, sort=sort, max_price=max_price, page=page-1) }}">← Previous</a>
+    {% endif %}
+    <span>Page {{ page }} of {{ total_pages }} ({{ total }} products)</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('index', q=q or None, cat=cat, sort=sort, max_price=max_price, page=page+1) }}">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
 
   <div class="trust">
     <div><div style="font-size:30px">🔒</div><b>Secure payment</b><span>Payment is processed securely on AliExpress.</span></div>

@@ -163,16 +163,31 @@ def create_app():
         products = _apply_pricing(products)
         if sort == "featured":
             products = pricing_mod.featured_order(products)
+        # Pagination: 24 products per page (the catalog grows by up to
+        # 50 auto-added products a day; the homepage must stay fast).
+        try:
+            page = int(request.args.get("page") or 1)
+        except ValueError:
+            page = 1
+        page = max(page, 1)
+        PER_PAGE = 24
+        total = len(products)
+        total_pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
+        page = min(page, total_pages)
+        page_products = products[(page - 1) * PER_PAGE:page * PER_PAGE]
         categories = store_db.get_categories(g.db)
         return render_template(
             "index.html",
-            products=products,
+            products=page_products,
             categories=categories,
             q=q,
             cat=cat,
             sort=sort,
             max_price=max_price,
             base_url=_base_url(),
+            page=page,
+            total_pages=total_pages,
+            total=total,
         )
 
     @app.route("/product/<product_id>")

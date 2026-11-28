@@ -21,9 +21,15 @@
     var n = 0;
     getCart().forEach(function (i) { n += i.qty; });
     var el = document.getElementById("cartCount");
-    if (!el) return;
-    el.style.display = n ? "flex" : "none";
-    el.textContent = n;
+    if (el) {
+      el.style.display = n ? "flex" : "none";
+      el.textContent = n;
+    }
+    var elM = document.getElementById("cartCountMobile");
+    if (elM) {
+      elM.style.display = n ? "flex" : "none";
+      elM.textContent = n;
+    }
   }
 
   function renderCart() {
@@ -55,7 +61,7 @@
       var lk = document.createElement("a");
       lk.href = "/go/" + item.id;
       lk.textContent = "Buy on AliExpress";
-      lk.style.cssText = "font-size:12px;color:#e62e04;font-weight:bold";
+      lk.style.cssText = "font-size:12px;color:#4e6e4a;font-weight:bold";
       var rm = document.createElement("button");
       rm.type = "button"; rm.className = "rm"; rm.textContent = "Remove";
       rm.addEventListener("click", function () {
@@ -153,6 +159,8 @@
     addPushOptIn();
     var cartBtn = document.getElementById("cartBtn");
     if (cartBtn) cartBtn.addEventListener("click", openDrawer);
+    var cartBtnMobile = document.getElementById("cartBtnMobile");
+    if (cartBtnMobile) cartBtnMobile.addEventListener("click", openDrawer);
     var closeBtn = document.getElementById("drawerClose");
     if (closeBtn) closeBtn.addEventListener("click", closeDrawer);
     var overlay = document.getElementById("overlay");
