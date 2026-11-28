@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product['title'] }} | Home Shopping{% endblock %}
+{% block meta_desc %}{{ product['description'] }} Price ${{ '%.2f'|format(product['price_usd']) }} on AliExpress.{% endblock %}
+
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": {{ product['title']|tojson }},
+  "description": {{ product['description']|tojson }},
+  "image": {{ product['image_url']|tojson }},
+  "category": {{ product['category']|tojson }},
+  "aggregateRating": {"@type": "AggregateRating", "ratingValue": "{{ product['rating'] }}", "bestRating": "5"},
+  "offers": {"@type": "Offer", "price": "{{ '%.2f'|format(product['price_usd']) }}", "priceCurrency": "USD", "availability": "https://schema.org/InStock", "url": "{{ base_url }}{{ url_for('product_page', product_id=product['id']) }}"}
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <div class="pd">
+    <div class="pimg">
+      <img src="{{ product['image_url'] }}" alt="{{ product['title'] }}">
+    </div>
+    <div>
+      <div class="cat" style="font-size:12px;color:#666;margin-bottom:5px">{{ product['category'] }}</div>
+      <h1>{{ product['title'] }}</h1>
+      <div class="stars">{% for i in range(5) %}{{ '★' if i < product['rating']|round(0, 'floor')|int else '☆' }}{% endfor %} <small>{{ product['rating'] }} out of 5</small></div>
+      <div class="price" style="font-size:26px">${{ '%.2f'|format(product['price_usd']) }}{% if product['old_price_usd'] %}<span class="old">${{ '%.2f'|format(product['old_price_usd']) }}</span>{% endif %}</div>
+      {% if product['discount_percent'] %}<div class="sales">Discount: {{ product['discount_percent'] }}%</div>{% endif %}
+      <p class="desc">{{ product['description'] }}</p>
+      <div class="meta">
+        Category: {{ product['category'] }}<br>
+        {% if product['reviews'] %}{{ product['reviews'] }}<br>{% endif %}
+        Prices in USD. The final price is charged on AliExpress and may vary slightly.
+      </div>
+      <div class="actions">
+        <button class="btn dark" type="button" data-add-to-cart data-id="{{ product['id'] }}" data-title="{{ product['title'] }}" data-price="{{ product['price_usd'] }}" data-image="{{ product['image_url'] }}">Add to Cart</button>
+        <a class="btn red" href="{{ url_for('go_page', product_id=product['id']) }}">Buy Now</a>
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:14px">Links are referral links. We may earn a commission when you buy at no extra cost to you. Prices change on AliExpress.</p>
+    </div>
+  </div>
+
+  {% if related %}
+  <h2 class="sec-title">You may also like</h2>
+  <main class="grid">
+    {% for p in related %}
+    <article class="card">
+      <div class="img">
+        <a href="{{ url_for('product_page', product_id=p['id']) }}">
+          <img src="{{ p['image_url'] }}" alt="{{ p['title'] }}" loading="lazy">
+        </a>
+        {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
+      </div>
+      <div class="body">
+        <div class="cat">{{ p['category'] }}</div>
+        <div class="name"><a href="{{ url_for('product_page', product_id=p['id']) }}">{{ p['title'] }}</a></div>
+        <div class="price">${{ '%.2f'|format(p['price_usd']) }}{% if p['old_price_usd'] %}<span class="old">${{ '%.2f'|format(p['old_price_usd']) }}</span>{% endif %}</div>
+        <div class="btns">
+          <a class="btn ghost" href="{{ url_for('product_page', product_id=p['id']) }}">Details</a>
+          <a class="btn red" href="{{ url_for('go_page', product_id=p['id']) }}">Buy Now</a>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </main>
+  {% endif %}
+</div>
+{% endblock %}

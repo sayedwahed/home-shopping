@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Home Shopping | Selected AliExpress Products with Big Discounts{% endblock %}</title>
+<meta name="description" content="{% block meta_desc %}Home Shopping: hand-picked AliExpress products with prices in USD — big discounts and direct buy links.{% endblock %}">
+<link rel="canonical" href="{{ base_url }}{{ request.path }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Home Shopping">
+<meta property="og:title" content="Home Shopping | Selected AliExpress Products">
+<meta property="og:description" content="Hand-picked AliExpress products with prices in USD and direct buy links.">
+<meta property="og:url" content="{{ base_url }}{{ request.path }}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+<div class="announce">Big discounts on selected products — up to 73% off | See the deals below</div>
+<header class="site">
+  <div class="head-in">
+    <a class="logo" href="{{ url_for('index') }}">Home <span>Shopping</span></a>
+    <form class="search" action="{{ url_for('index') }}" method="get">
+      <input type="search" name="q" value="{{ q|default('') }}" placeholder="Search products..." aria-label="Search products">
+      <button type="submit">🔍</button>
+    </form>
+    <button class="cart-btn" id="cartBtn" type="button">🛒 Cart <span class="n" id="cartCount" style="display:none">0</span></button>
+  </div>
+  <nav class="cats">
+    <a href="{{ url_for('index') }}" class="{{ 'on' if cat|default('all') == 'all' else '' }}">All</a>
+    {% for c in categories|default([]) %}
+    <a href="{{ url_for('index', cat=c) }}" class="{{ 'on' if cat|default('all') == c else '' }}">{{ c }}</a>
+    {% endfor %}
+  </nav>
+</header>
+
+{% block content %}{% endblock %}
+
+<footer class="site"><div class="foot-in">
+  <b>Home Shopping</b><br>
+  Home Shopping brings you the best AliExpress deals in one place — electronics, fashion and gaming at big discounts.
+  <div class="disc">Links are referral links. We may earn a commission when you buy at no extra cost to you. Prices change on AliExpress.</div>
+</div></footer>
+
+<div class="overlay hidden" id="overlay"></div>
+<aside class="drawer hidden" id="drawer" aria-label="Shopping cart">
+  <header><span>Shopping Cart</span><button id="drawerClose" type="button">✕</button></header>
+  <div class="items" id="cartItems"></div>
+  <div class="foot">
+    <div class="total"><span>Total</span><span id="cartTotal">$0.00</span></div>
+    <div class="note">Payment and shipping happen on AliExpress: tap a product to complete your purchase from its deal link.</div>
+  </div>
+</aside>
+
+<script src="{{ url_for('static', filename='js/store.js') }}"></script>
+</body>
+</html>

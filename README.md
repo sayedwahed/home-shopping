@@ -1,0 +1,101 @@
+# متجر Home Shopping — نسخة Flask
+
+متجر إفلييت (Affiliate) باللغة الإنجليزية والأسعار بالدولار فقط، للمنتجات
+الثلاثة الخاصة بصاحب المتجر على AliExpress. لا يوجد منتجات أخرى، ولا تحويل
+عملة، ولا واجهة عربية.
+
+## ما تم بناؤه (الأنظمة 1-4 من الخطة)
+
+1. **المتجر الرئيسي (Flask):** يعمل على `127.0.0.1:5000`.
+   الصفحات: الرئيسية `/`، صفحة المنتج `/product/<id>`، صفحة الإفصاح
+   `/go/<id>` (تعرض المنتج + تنبيه "رابط إفلييت" + زر "متابعة إلى
+   AliExpress" — بدون تحويل تلقائي وبدون نوافذ منبثقة)، `/health`،
+   `/sitemap.xml`، `/robots.txt`. كل رد يحمل رؤوس أمان
+   (CSP, HSTS, X-Frame-Options, HttpOnly, SameSite=Lax).
+2. **قاعدة البيانات (Postgres أولاً، SQLite محلياً):** عند ضبط
+   متغير البيئة `DATABASE_URL` يستخدم المتجر Postgres (Neon المجاني
+   في الإنتاج)، وإلا يستخدم ملف SQLite المحلي `data/store.db`
+   للتطوير. الجداول في الحالتين: `products` و`clicks` و`settings`،
+   مع `created_at` و`updated_at` وفهارس. التهيئة من
+   `data/products.json` عبر `seed.py`، وتعمل مع كلا الخيارين.
+3. **الجغرافيا واللغة والعملة:** كشف البلد عبر ip-api.com (البلد فقط،
+   بدون تخزين IP كامل — يُخزَّن هاش SHA-256 فقط عند الضغط على زر
+   المتابعة). اللغة الوحيدة المفعّلة هي الإنجليزية والعملة الوحيدة هي
+   الدولار الأمريكي؛ باقي اللغات موجودة كـ stubs معطّلة في `geo.py`.
+4. **المنتجات والكتالوج:** بحث داخلي، تصفية بالفئة، ترتيب (الأحدث /
+   الأكبر خصماً / السعر). تحديث الأسعار اليومي عبر
+   `scripts/refresh_prices.py` — يعمل فقط إذا كانت متغيرات البيئة
+   الثلاثة موجودة، وإلا يخرج بهدوء بدون تغيير.
+
+## التشغيل محلياً
+
+```bash
+cd home-shopping-flask
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python seed.py          # إنشاء قاعدة البيانات من data/products.json
+python app.py           # يفتح على http://127.0.0.1:5000
+```
+
+أو باستخدام gunicorn:
+
+```bash
+gunicorn app:app --bind 127.0.0.1:5000
+```
+
+## تحديث الأسعار يدوياً
+
+```bash
+export ALIEXPRESS_APP_KEY=...
+export ALIEXPRESS_APP_SECRET=...
+export ALIEXPRESS_TRACKING_ID=...
+python scripts/refresh_prices.py
+```
+
+بدون هذه المتغيرات، السكربت يخرج فوراً بدون أي تغيير.
+
+## النشر على Render + Neon (مجاني بالكامل)
+
+البيانات لا تعيش على Render المجاني وحده: ملف SQLite يُمسح مع كل
+إعادة تشغيل أو نوم للخدمة، وPostgres المجاني من Render ينتهي بعد 30
+يوماً. لذلك التطبيق يعمل على Render المجاني، والبيانات تعيش على
+Neon (Postgres مجاني للأبد، بلا بطاقة بنكية: 1 جيجا تخزين لكل مشروع).
+
+1. **أنشئ مشروع Neon** (neon.tech، الخطة المجانية): من لوحة Neon
+   انسخ "Connection string" — تبدأ بـ `postgres://` وتحتوي كلمة
+   مرور، فلا تشاركها مع أحد ولا تضعها في أي ملف.
+2. ارفع هذا المجلد إلى مستودع GitHub.
+3. في Render: New → Web Service → اختر المستودع (سيكتشف `render.yaml`).
+4. من لوحة Render → Environment: أضف `DATABASE_URL` بقيمة سلسلة
+   اتصال Neon، وأضف القيم الحقيقية لـ `ALIEXPRESS_APP_KEY`
+   و`ALIEXPRESS_APP_SECRET` و`ALIEXPRESS_TRACKING_ID`
+   (لا تضع أي سر في ملفات المشروع أبداً).
+5. بعد أول نشر، عدّل `BASE_URL` في `render.yaml` إلى رابط خدمتك
+   الحقيقي (مثلاً `https://home-shopping-xxxx.onrender.com`) وأعد النشر.
+6. بعد النشر، شغّل التهيئة مرة واحدة (من Render Shell):
+   `python seed.py` — يملأ قاعدة Neon بالمنتجات الثلاثة.
+7. بدون `DATABASE_URL` يعود التطبيق تلقائياً إلى SQLite المحلي —
+   مناسب للتطوير على جهازك فقط، وليس للإنتاج على Render.
+
+ملاحظات:
+- الخدمة المجانية على Render تنام بعد 15 دقيقة بلا زيارات، وأول طلب
+  بعدها يأخذ نحو دقيقة للاستيقاظ. قاعدة Neon تنام بعد 5 دقائق بلا
+  استعلامات وتستيقظ خلال أجزاء من الثانية مع أول استعلام.
+- تحديث الأسعار اليومي: Render المجاني بلا Cron Jobs، فشغّله من
+  GitHub Actions (يكتب مباشرة في Neon عبر `DATABASE_URL`) أو يدوياً.
+
+## ملفات المشروع
+
+| ملف | الوصف |
+|---|---|
+| `app.py` | تطبيق Flask والمسارات ورؤوس الأمان |
+| `db.py` | طبقة قاعدة البيانات (Postgres عبر `DATABASE_URL` أو SQLite محلياً) |
+| `geo.py` | كشف البلد + هاش IP + إطار اللغة/العملة |
+| `seed.py` | (إعادة) تهيئة قاعدة البيانات من `data/products.json` |
+| `scripts/refresh_prices.py` | تحديث الأسعار اليومي من AliExpress API |
+| `templates/` | قوالب Jinja (الواجهة الإنجليزية) |
+| `static/css/style.css` | تصميم المتجر (نمط Shopify) |
+| `static/js/store.js` | سلة التسوق (localStorage) |
+| `data/products.json` | مصدر المنتجات الثلاثة (روابط الإفلييت الخاصة بك) |
+| `render.yaml` | إعداد خدمة Render |

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero"><div class="hero-in">
+  <h1>Hand-picked products, lower prices</h1>
+  <p>We picked the best deals from AliExpress for you: electronics, fashion and gaming — real discounts and direct buy links.</p>
+  <a class="cta" href="#products">Shop the deals</a>
+</div></section>
+
+<div class="wrap">
+  <div class="cols">
+    <a class="col electronics" href="{{ url_for('index', cat='Electronics') }}"><h3>Electronics</h3><span>🔧 · Shop now</span></a>
+    <a class="col fashion" href="{{ url_for('index', cat='Fashion') }}"><h3>Fashion</h3><span>⌚ · Shop now</span></a>
+    <a class="col gaming" href="{{ url_for('index', cat='Gaming') }}"><h3>Gaming</h3><span>🖱️ · Shop now</span></a>
+  </div>
+
+  <h2 class="sec-title" id="products">Featured products</h2>
+  <p class="sec-sub">All products below link straight to AliExpress.</p>
+  <form class="toolbar" action="{{ url_for('index') }}" method="get">
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {% if cat and cat != 'all' %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
+    <select name="sort" aria-label="Sort products" onchange="this.form.submit()">
+      <option value="featured" {{ 'selected' if sort == 'featured' else '' }}>Sort: Featured</option>
+      <option value="newest" {{ 'selected' if sort == 'newest' else '' }}>Sort: Newest</option>
+      <option value="discount" {{ 'selected' if sort == 'discount' else '' }}>Biggest discount</option>
+      <option value="price-asc" {{ 'selected' if sort == 'price-asc' else '' }}>Price: Low to High</option>
+      <option value="price-desc" {{ 'selected' if sort == 'price-desc' else '' }}>Price: High to Low</option>
+    </select>
+    <label>Max price <input type="number" name="max_price" min="0" step="0.01" style="width:110px" value="{{ max_price if max_price is not none else '' }}" onchange="this.form.submit()"> USD</label>
+    <span class="usd-note">Prices in USD. The final price is charged on AliExpress and may vary slightly.</span>
+  </form>
+
+  <main class="grid">
+    {% if products %}
+      {% for p in products %}
+      <article class="card">
+        <div class="img">
+          <a href="{{ url_for('product_page', product_id=p['id']) }}">
+            <img src="{{ p['image_url'] }}" alt="{{ p['title'] }}" loading="lazy">
+          </a>
+          {% if p['discount_percent'] %}<span class="badge-off">-{{ p['discount_percent'] }}% OFF</span>{% endif %}
+        </div>
+        <div class="body">
+          <div class="cat">{{ p['category'] }}</div>
+          <div class="name"><a href="{{ url_for('product_page', product_id=p['id']) }}">{{ p['title'] }}</a></div>
+          <div class="stars">{% for i in range(5) %}{{ '★' if i < p['rating']|round(0, 'floor')|int else '☆' }}{% endfor %} <small>{{ p['rating'] }}</small></div>
+          <div class="price">${{ '%.2f'|format(p['price_usd']) }}{% if p['old_price_usd'] %}<span class="old">${{ '%.2f'|format(p['old_price_usd']) }}</span>{% endif %}</div>
+          <div class="sales">Rating {{ p['rating'] }} out of 5{% if p['reviews'] %} · {{ p['reviews'] }}{% endif %}</div>
+          <div class="btns">
+            <a class="btn ghost" href="{{ url_for('product_page', product_id=p['id']) }}">Details</a>
+            <button class="btn dark" type="button" data-add-to-cart data-id="{{ p['id'] }}" data-title="{{ p['title'] }}" data-price="{{ p['price_usd'] }}" data-image="{{ p['image_url'] }}">Add to Cart</button>
+            <a class="btn red" href="{{ url_for('go_page', product_id=p['id']) }}">Buy Now</a>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No products match your search.</div>
+    {% endif %}
+  </main>
+
+  <div class="trust">
+    <div><div style="font-size:30px">🔒</div><b>Secure payment</b><span>Payment is processed securely on AliExpress.</span></div>
+    <div><div style="font-size:30px">🛡️</div><b>Buyer Protection</b><span>AliExpress Buyer Protection covers your order.</span></div>
+    <div><div style="font-size:30px">🚚</div><b>Ships from seller</b><span>Shipping and delivery follow the seller policy on AliExpress.</span></div>
+  </div>
+</div>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Home Shopping",
+  "url": "{{ base_url }}/",
+  "itemListElement": [
+    {% for p in products %}
+    {
+      "@type": "Product",
+      "position": {{ loop.index }},
+      "name": {{ p['title']|tojson }},
+      "description": {{ p['description']|tojson }},
+      "image": {{ p['image_url']|tojson }},
+      "category": {{ p['category']|tojson }},
+      "offers": {"@type": "Offer", "price": "{{ '%.2f'|format(p['price_usd']) }}", "priceCurrency": "USD", "url": "{{ base_url }}{{ url_for('product_page', product_id=p['id']) }}"}
+    }{{ ',' if not loop.last else '' }}
+    {% endfor %}
+  ]
+}
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+# Render Web Service for Home Shopping (Flask store).
+# Free tier. Deploy from the repo root of this project.
+# Secrets are set in the Render dashboard (Environment), NEVER in this file.
+services:
+  - type: web
+    name: home-shopping
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
+      # DATABASE_URL: set in the Render dashboard (Environment) from the
+      # Neon project connection string (Neon dashboard -> "Connection
+      # string"). Never put the real connection string in this file.
+      # Without DATABASE_URL the app falls back to local SQLite, whose
+      # file is wiped on every Render restart/spin-down — so always set
+      # this on Render.
+      - key: DATABASE_URL
+        sync: false
+      - key: BASE_URL
+        # TODO: update to the real service URL after the first deploy
+        # (e.g. https://home-shopping-xxxx.onrender.com).
+        value: https://home-shopping.onrender.com
+      - key: ALIEXPRESS_APP_KEY
+        sync: false
+      - key: ALIEXPRESS_APP_SECRET
+        sync: false
+      - key: ALIEXPRESS_TRACKING_ID
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

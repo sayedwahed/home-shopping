@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Continue to AliExpress — {{ product['title'] }} | Home Shopping{% endblock %}
+{% block meta_desc %}You are about to leave Home Shopping to view {{ product['title'] }} on AliExpress.{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <div class="go-card">
+    <div class="gimg"><img src="{{ product['image_url'] }}" alt="{{ product['title'] }}"></div>
+    <div class="gbody">
+      <h1>{{ product['title'] }}</h1>
+      <div class="gprice">${{ '%.2f'|format(product['price_usd']) }}{% if product['old_price_usd'] %} <span style="font-size:14px;color:#999;text-decoration:line-through;font-weight:400">${{ '%.2f'|format(product['old_price_usd']) }}</span>{% endif %}</div>
+      <p style="font-size:14px;color:#555;line-height:1.7">{{ product['description'] }}</p>
+
+      <div class="notice">
+        <b>⚠️ Affiliate link notice</b>
+        The button below is an affiliate (referral) link. If you buy through
+        it, Home Shopping may earn a commission at no extra cost to you.
+        You will leave this site and complete your purchase on AliExpress,
+        where AliExpress terms and Buyer Protection apply. Prices on
+        AliExpress may change.
+        <span style="display:block;margin-top:8px;font-size:12px;color:#888">Destination: {{ product['affiliate_url'] }}</span>
+      </div>
+
+      <form action="{{ url_for('go_continue', product_id=product['id']) }}" method="post">
+        {% if ref %}<input type="hidden" name="ref" value="{{ ref }}">{% endif %}
+        <button class="btn red" type="submit">Continue to AliExpress →</button>
+      </form>
+      <a class="back" href="{{ url_for('product_page', product_id=product['id']) }}">← Back to product</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
